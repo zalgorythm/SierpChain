@@ -13,6 +13,7 @@ use std::collections::HashSet;
 use tokio::sync::mpsc;
 use tracing::{error, info};
 use crate::block::{Block, Blockchain};
+use crate::transaction::Transaction;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -20,6 +21,7 @@ pub enum P2pMessage {
     ChainRequest,
     ChainResponse(Blockchain),
     Block(Block),
+    Transaction(Transaction),
 }
 
 #[derive(NetworkBehaviour)]
