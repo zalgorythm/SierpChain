@@ -75,14 +75,14 @@ fn app() -> Html {
     if blocks.is_empty() {
         html! {
             <div>
-                <h1>{ "Fractal Triangle Blockchain" }</h1>
+                <h1>{ "SierpChain" }</h1>
                 <p>{ "Loading blocks..." }</p>
             </div>
         }
     } else {
         html! {
             <div>
-                <h1>{ "Fractal Triangle Blockchain" }</h1>
+                <h1>{ "SierpChain" }</h1>
                 <div class="blocks-container">
                     { for blocks.iter().map(|block| html! {
                         <div class="block-card" style="border: 1px solid black; padding: 10px; margin: 10px;">
