@@ -1,10 +1,10 @@
 use chrono::Utc;
 use sha2::{Sha256, Digest};
-use serde::{Serialize};
+use serde::{Serialize, Deserialize};
 use crate::fractal::FractalTriangle;
 
 /// Represents a block in the SierpChain.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Block {
     pub index: u64,
     pub timestamp: i64,
@@ -29,6 +29,7 @@ impl Block {
 }
 
 /// Represents the blockchain.
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Blockchain {
     pub chain: Vec<Block>,
     pub difficulty: usize,
@@ -86,5 +87,15 @@ impl Blockchain {
         };
         let mined_block = self.mine_block(new_block);
         self.chain.push(mined_block);
+    }
+
+    pub fn add_block_from_network(&mut self, block: Block) {
+        let previous_block = self.chain.last().unwrap();
+        if block.index == previous_block.index + 1 && block.previous_hash == previous_block.hash {
+            let prefix = "0".repeat(self.difficulty);
+            if block.hash.starts_with(&prefix) && block.hash == block.calculate_hash() {
+                self.chain.push(block);
+            }
+        }
     }
 }
