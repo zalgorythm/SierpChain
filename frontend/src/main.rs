@@ -4,12 +4,14 @@ use wasm_bindgen_futures::spawn_local;
 use serde::Deserialize;
 use log;
 
+/// Represents a Sierpinski triangle fractal.
 #[derive(Clone, PartialEq, Deserialize, Debug)]
 pub struct FractalTriangle {
     pub depth: usize,
     pub vertices: Vec<(f64, f64)>,
 }
 
+/// Represents a block in the SierpChain.
 #[derive(Clone, PartialEq, Deserialize, Debug)]
 pub struct Block {
     pub index: u64,
@@ -21,11 +23,13 @@ pub struct Block {
     pub nonce: u64,
 }
 
+/// Properties for the `FractalTriangleComponent`.
 #[derive(Properties, PartialEq)]
 pub struct FractalTriangleProps {
     pub triangle: FractalTriangle,
 }
 
+/// A Yew component for rendering a `FractalTriangle` as an SVG.
 #[function_component(FractalTriangleComponent)]
 fn fractal_triangle_component(props: &FractalTriangleProps) -> Html {
     let points_list = props.triangle.vertices.chunks(3).map(|chunk| {
@@ -43,12 +47,15 @@ fn fractal_triangle_component(props: &FractalTriangleProps) -> Html {
     }
 }
 
+/// The main application component.
 #[function_component(App)]
 fn app() -> Html {
+    // State handle for the list of blocks.
     let blocks = use_state(|| vec![]);
 
     {
         let blocks = blocks.clone();
+        // Fetch the blocks from the backend when the component is first rendered.
         use_effect_with((), move |_| {
             let blocks_clone = blocks.clone();
             spawn_local(async move {
@@ -101,6 +108,7 @@ fn app() -> Html {
     }
 }
 
+/// The main entry point for the frontend application.
 fn main() {
     wasm_logger::init(wasm_logger::Config::default());
     yew::Renderer::<App>::new().render();
