@@ -1,5 +1,5 @@
 [package]
-name = "fractal_triangle_blockchain"
+name = "sierpchain"
 version = "0.1.0"
 edition = "2024"
 
