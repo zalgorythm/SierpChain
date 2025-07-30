@@ -28,6 +28,12 @@ impl Block {
     }
 }
 
+// The expected time to mine a block, in seconds.
+pub const BLOCK_GENERATION_INTERVAL: i64 = 10;
+// The number of blocks after which to adjust the difficulty.
+pub const DIFFICULTY_ADJUSTMENT_INTERVAL: u64 = 10;
+
+
 /// Represents the blockchain.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Blockchain {
@@ -44,6 +50,30 @@ impl Blockchain {
         };
         blockchain.create_genesis_block();
         blockchain
+    }
+
+    /// Adjusts the mining difficulty based on the time it took to mine the last
+    /// `DIFFICULTY_ADJUSTMENT_INTERVAL` blocks.
+    ///
+    /// The difficulty is adjusted to keep the block generation time close to
+    /// `BLOCK_GENERATION_INTERVAL`.
+    pub fn adjust_difficulty(&mut self) {
+        let latest_block = self.chain.last().unwrap();
+        if latest_block.index % DIFFICULTY_ADJUSTMENT_INTERVAL == 0 && latest_block.index != 0 {
+            let previous_adjustment_block = &self.chain[(latest_block.index - DIFFICULTY_ADJUSTMENT_INTERVAL) as usize];
+            let time_taken = latest_block.timestamp - previous_adjustment_block.timestamp;
+            let expected_time = (DIFFICULTY_ADJUSTMENT_INTERVAL as i64) * BLOCK_GENERATION_INTERVAL;
+
+            if time_taken < expected_time / 2 {
+                self.difficulty += 1;
+                println!("Difficulty increased to {}", self.difficulty);
+            } else if time_taken > expected_time * 2 {
+                if self.difficulty > 1 {
+                    self.difficulty -= 1;
+                    println!("Difficulty decreased to {}", self.difficulty);
+                }
+            }
+        }
     }
 
     /// Creates the genesis block for the blockchain.
@@ -87,15 +117,37 @@ impl Blockchain {
         };
         let mined_block = self.mine_block(new_block);
         self.chain.push(mined_block);
+        self.adjust_difficulty();
     }
 
     pub fn add_block_from_network(&mut self, block: Block) {
         let previous_block = self.chain.last().unwrap();
-        if block.index == previous_block.index + 1 && block.previous_hash == previous_block.hash {
-            let prefix = "0".repeat(self.difficulty);
-            if block.hash.starts_with(&prefix) && block.hash == block.calculate_hash() {
-                self.chain.push(block);
-            }
+        if self.is_block_valid(&block, previous_block) {
+            self.chain.push(block);
+            self.adjust_difficulty();
         }
+    }
+
+    /// Validates a block.
+    fn is_block_valid(&self, new_block: &Block, previous_block: &Block) -> bool {
+        if new_block.index != previous_block.index + 1 {
+            return false;
+        }
+        if new_block.previous_hash != previous_block.hash {
+            return false;
+        }
+        let prefix = "0".repeat(self.difficulty);
+        if !new_block.hash.starts_with(&prefix) || new_block.hash != new_block.calculate_hash() {
+            return false;
+        }
+        // Timestamp validation
+        let now = Utc::now().timestamp();
+        if new_block.timestamp > now + 30 { // 30 seconds tolerance for future blocks
+            return false;
+        }
+        if new_block.timestamp < previous_block.timestamp {
+            return false;
+        }
+        true
     }
 }
