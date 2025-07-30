@@ -2,6 +2,8 @@ use chrono::Utc;
 use sha2::{Sha256, Digest};
 use serde::{Serialize, Deserialize};
 use crate::fractal::FractalTriangle;
+use crate::transaction::{Transaction, TxInput, TxOutput};
+use std::collections::HashSet;
 
 /// Represents a block in the SierpChain.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -9,7 +11,7 @@ pub struct Block {
     pub index: u64,
     pub timestamp: i64,
     pub fractal: FractalTriangle,
-    pub data: String,
+    pub transactions: Vec<Transaction>,
     pub previous_hash: String,
     pub hash: String,
     pub nonce: u64,
@@ -78,11 +80,25 @@ impl Blockchain {
 
     /// Creates the genesis block for the blockchain.
     fn create_genesis_block(&mut self) {
+        let coinbase_tx = Transaction::new(
+            vec![TxInput {
+                txid: "0".repeat(64),
+                vout: usize::MAX,
+                script_sig: String::from("genesis"),
+                pub_key: String::new(),
+                sequence: 0,
+            }],
+            vec![TxOutput {
+                value: 50,
+                script_pub_key: String::from("genesis_address"), // Placeholder
+            }],
+        );
+
         let genesis_block = Block {
             index: 0,
             timestamp: Utc::now().timestamp(),
             fractal: FractalTriangle::generate(0),
-            data: String::from("Genesis Block"),
+            transactions: vec![coinbase_tx],
             previous_hash: "0".to_string(),
             hash: String::new(),
             nonce: 0,
@@ -104,13 +120,13 @@ impl Blockchain {
     }
 
     /// Adds a new block to the blockchain.
-    pub fn add_block(&mut self, fractal_depth: usize, data: String) {
+    pub fn add_block(&mut self, fractal_depth: usize, transactions: Vec<Transaction>) {
         let previous_block = self.chain.last().unwrap().clone();
         let new_block = Block {
             index: previous_block.index + 1,
             timestamp: Utc::now().timestamp(),
             fractal: FractalTriangle::generate(fractal_depth),
-            data,
+            transactions,
             previous_hash: previous_block.hash.clone(),
             hash: String::new(),
             nonce: 0,
@@ -149,5 +165,98 @@ impl Blockchain {
             return false;
         }
         true
+    }
+
+    /// Returns the UTXOs for a given address.
+    pub fn get_utxos(&self, address: &str) -> Vec<(String, usize, TxOutput)> {
+        let mut utxos = Vec::new();
+        let mut spent_txos = HashSet::new();
+
+        for block in &self.chain {
+            for tx in &block.transactions {
+                for input in &tx.inputs {
+                    spent_txos.insert((input.txid.clone(), input.vout));
+                }
+            }
+        }
+
+        for block in &self.chain {
+            for tx in &block.transactions {
+                for (vout, output) in tx.outputs.iter().enumerate() {
+                    if output.script_pub_key == address {
+                        if !spent_txos.contains(&(tx.id.clone(), vout)) {
+                            utxos.push((tx.id.clone(), vout, output.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        utxos
+    }
+
+    /// Returns the balance for a given address.
+    pub fn get_balance(&self, address: &str) -> u64 {
+        self.get_utxos(address)
+            .iter()
+            .map(|(_, _, utxo)| utxo.value)
+            .sum()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wallet::Wallet;
+
+    #[test]
+    fn test_get_balance_and_utxos() {
+        let mut blockchain = Blockchain::new(1);
+        let wallet1 = Wallet::new();
+        let wallet2 = Wallet::new();
+
+        // The genesis block creates a coinbase transaction. Let's assume it goes to a burn address for simplicity.
+        // In our implementation, it goes to "genesis_address".
+
+        let tx1 = Transaction::new(
+            vec![], // No inputs, this is not a valid tx, but for testing balance it is ok
+            vec![
+                TxOutput {
+                    value: 20,
+                    script_pub_key: wallet1.get_address(),
+                },
+                TxOutput {
+                    value: 30,
+                    script_pub_key: wallet1.get_address(),
+                },
+            ],
+        );
+
+        let tx2 = Transaction::new(
+            vec![TxInput {
+                txid: tx1.id.clone(),
+                vout: 0,
+                script_sig: String::new(),
+                pub_key: String::new(),
+                sequence: 0,
+            }],
+            vec![TxOutput {
+                value: 20,
+                script_pub_key: wallet2.get_address(),
+            }],
+        );
+
+        blockchain.add_block(1, vec![tx1]);
+        blockchain.add_block(1, vec![tx2]);
+
+        // Wallet 1 should have 30 (one output of 20 was spent)
+        assert_eq!(blockchain.get_balance(&wallet1.get_address()), 30);
+        // Wallet 2 should have 20
+        assert_eq!(blockchain.get_balance(&wallet2.get_address()), 20);
+
+        // Wallet 1 should have one UTXO
+        assert_eq!(blockchain.get_utxos(&wallet1.get_address()).len(), 1);
+        // Wallet 2 should have one UTXO
+        assert_eq!(blockchain.get_utxos(&wallet2.get_address()).len(), 1);
     }
 }
