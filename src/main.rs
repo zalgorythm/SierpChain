@@ -52,6 +52,22 @@ async fn get_utxos(
     web::Json(utxos)
 }
 
+#[get("/wallet/info")]
+async fn get_wallet_info(
+    blockchain: web::Data<Arc<Mutex<Blockchain>>>,
+    miner_wallet: web::Data<Arc<Wallet>>,
+) -> impl Responder {
+    let address = miner_wallet.get_address();
+    let balance = {
+        let blockchain = blockchain.lock().unwrap();
+        blockchain.get_balance(&address)
+    };
+    web::Json(serde_json::json!({
+        "address": address,
+        "balance": balance,
+    }))
+}
+
 #[derive(Deserialize)]
 struct TransactRequest {
     to: String,
@@ -181,6 +197,10 @@ async fn main() -> std::io::Result<()> {
                 blockchain_lock.add_block(5, block_transactions);
                 new_block = blockchain_lock.chain.last().unwrap().clone();
                 to_p2p_sender_for_mining.send(P2pMessage::Block(new_block.clone())).unwrap();
+
+                if let Err(e) = blockchain_lock.save_to_file() {
+                    tracing::error!("Failed to save blockchain: {}", e);
+                }
             } // Mutex lock is released here.
 
             println!("Block {} mined: {:#?}", new_block.index, new_block);
@@ -196,6 +216,9 @@ async fn main() -> std::io::Result<()> {
                 P2pMessage::Block(block) => {
                     let mut blockchain_lock = blockchain_for_networking.lock().unwrap();
                     blockchain_lock.add_block_from_network(block);
+                    if let Err(e) = blockchain_lock.save_to_file() {
+                        tracing::error!("Failed to save blockchain: {}", e);
+                    }
                 }
                 P2pMessage::ChainRequest => {
                     let blockchain_lock = blockchain_for_networking.lock().unwrap();
@@ -209,6 +232,9 @@ async fn main() -> std::io::Result<()> {
                         // In a real application, you'd want to do a full validation
                         // of the chain.
                         blockchain_lock.chain = chain.chain;
+                        if let Err(e) = blockchain_lock.save_to_file() {
+                            tracing::error!("Failed to save blockchain: {}", e);
+                        }
                     }
                 }
                 P2pMessage::Transaction(transaction) => {
@@ -242,6 +268,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_balance)
             .service(get_utxos)
             .service(transact)
+            .service(get_wallet_info)
     })
     .bind(("127.0.0.1", 8080))?
     .run()

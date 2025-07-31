@@ -60,6 +60,12 @@ impl Transaction {
     pub fn calculate_hash(&self) -> String {
         let mut tx_clone = self.clone();
         tx_clone.id = String::new(); // The id is not part of the hash calculation.
+        // For signing and verification, we don't want to include the signature
+        // in the hash.
+        for input in &mut tx_clone.inputs {
+            input.script_sig = String::new();
+            input.pub_key = String::new();
+        }
 
         let serialized = serde_json::to_string(&tx_clone).unwrap();
         let mut hasher = Sha256::new();
