@@ -4,6 +4,10 @@ use serde::{Serialize, Deserialize};
 use crate::fractal::FractalTriangle;
 use crate::transaction::{Transaction, TxInput, TxOutput};
 use std::collections::HashSet;
+use std::fs;
+use std::io::Write;
+
+const DB_FILE: &str = "blockchain.json";
 
 /// Represents a block in the SierpChain.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -44,8 +48,18 @@ pub struct Blockchain {
 }
 
 impl Blockchain {
-    /// Creates a new blockchain with a genesis block.
+    /// Creates a new blockchain, loading from a file if it exists.
     pub fn new(difficulty: usize) -> Self {
+        if let Ok(file_content) = fs::read_to_string(DB_FILE) {
+            if let Ok(mut blockchain) = serde_json::from_str::<Blockchain>(&file_content) {
+                println!("Loaded blockchain from {}", DB_FILE);
+                if blockchain.chain.is_empty() {
+                    blockchain.create_genesis_block();
+                }
+                return blockchain;
+            }
+        }
+
         let mut blockchain = Blockchain {
             chain: Vec::new(),
             difficulty,
@@ -201,6 +215,13 @@ impl Blockchain {
             .iter()
             .map(|(_, _, utxo)| utxo.value)
             .sum()
+    }
+
+    /// Saves the blockchain to a file.
+    pub fn save_to_file(&self) -> std::io::Result<()> {
+        let serialized = serde_json::to_string_pretty(&self).unwrap();
+        let mut file = fs::File::create(DB_FILE)?;
+        file.write_all(serialized.as_bytes())
     }
 }
 
