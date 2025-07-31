@@ -1,8 +1,11 @@
 use yew::prelude::*;
-use gloo_net::http::Request;
 use wasm_bindgen_futures::spawn_local;
 use serde::Deserialize;
 use log;
+use ws_stream_wasm::{WsMeta, WsMessage};
+use futures::stream::StreamExt;
+use wasm_bindgen::prelude::*;
+
 
 /// Represents a Sierpinski triangle fractal.
 #[derive(Clone, PartialEq, Deserialize, Debug)]
@@ -53,13 +56,13 @@ fn app() -> Html {
     // State handle for the list of blocks.
     let blocks = use_state(|| vec![]);
 
+    // Fetch the initial blocks via HTTP.
     {
         let blocks = blocks.clone();
-        // Fetch the blocks from the backend when the component is first rendered.
         use_effect_with((), move |_| {
             let blocks_clone = blocks.clone();
             spawn_local(async move {
-                match Request::get("http://127.0.0.1:8080/blocks").send().await {
+                match gloo_net::http::Request::get("http://127.0.0.1:8080/blocks").send().await {
                     Ok(response) => {
                         if response.ok() {
                             match response.json::<Vec<Block>>().await {
@@ -75,6 +78,37 @@ fn app() -> Html {
                     Err(e) => log::error!("Failed to send request: {:?}", e),
                 }
             });
+            || ()
+        });
+    }
+
+    // Establish WebSocket connection for real-time updates.
+    {
+        let blocks = blocks.clone();
+        use_effect_with((), move |_| {
+            spawn_local(async move {
+                let (_ws, mut wsio) = WsMeta::connect("ws://127.0.0.1:8080/ws/", None)
+                    .await
+                    .expect("Failed to connect to WebSocket");
+
+                log::info!("WebSocket connection established.");
+
+                while let Some(msg) = wsio.next().await {
+                    if let WsMessage::Text(txt) = msg {
+                        log::info!("Received WebSocket message: {}", txt);
+                        match serde_json::from_str::<Block>(&txt) {
+                            Ok(new_block) => {
+                                let mut current_blocks = (*blocks).clone();
+                                current_blocks.push(new_block);
+                                blocks.set(current_blocks);
+                            }
+                            Err(e) => log::error!("Failed to deserialize block from WebSocket: {:?}", e),
+                        }
+                    }
+                }
+                log::info!("WebSocket connection closed.");
+            });
+
             || ()
         });
     }
@@ -109,7 +143,8 @@ fn app() -> Html {
 }
 
 /// The main entry point for the frontend application.
-fn main() {
+#[wasm_bindgen(start)]
+pub fn main() {
     wasm_logger::init(wasm_logger::Config::default());
     yew::Renderer::<App>::new().render();
 }
