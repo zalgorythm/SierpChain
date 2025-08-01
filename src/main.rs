@@ -17,6 +17,8 @@ use actix::{Actor, Addr};
 use actix_cors::Cors;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Error};
 use actix_web_actors::ws;
+use clap::Parser;
+use libp2p::Multiaddr;
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -26,6 +28,17 @@ use tracing_subscriber::fmt;
 static TRACING_SUBSCRIBER: Lazy<()> = Lazy::new(|| {
     fmt::init();
 });
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    #[arg(short, long, default_value_t = 8080)]
+    http_port: u16,
+    #[arg(short, long, default_value_t = 0)]
+    p2p_port: u16,
+    #[arg(long)]
+    peer: Vec<Multiaddr>,
+}
 
 /// WebSocket handshake and actor starting
 async fn ws_route(
@@ -44,6 +57,7 @@ async fn ws_route(
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     Lazy::force(&TRACING_SUBSCRIBER);
+    let cli = Cli::parse();
 
     // Start the broadcast hub
     let hub = BroadcastHub::new().start();
@@ -64,7 +78,7 @@ async fn main() -> std::io::Result<()> {
     println!("Miner address: {}", miner_wallet.get_address());
 
     // Start the P2P network layer.
-    let p2p = P2p::new(p2p_message_sender, to_p2p_receiver).await;
+    let p2p = P2p::new(p2p_message_sender, to_p2p_receiver, cli.p2p_port, cli.peer).await;
     tokio::spawn(p2p.run());
 
     // Spawn a thread to handle incoming P2P messages.
@@ -113,7 +127,8 @@ async fn main() -> std::io::Result<()> {
         }
     });
 
-    println!("Starting web server at http://127.0.0.1:8080");
+    let http_addr = format!("127.0.0.1:{}", cli.http_port);
+    println!("Starting web server at http://{}", http_addr);
     HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()
@@ -135,7 +150,7 @@ async fn main() -> std::io::Result<()> {
             .service(create_wallet)
             .route("/ws", web::get().to(ws_route))
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind(http_addr)?
     .run()
     .await
 }

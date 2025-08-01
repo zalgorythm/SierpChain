@@ -6,11 +6,11 @@ use libp2p::{
     swarm::NetworkBehaviour,
     tcp,
     PeerId, Swarm, SwarmBuilder,
-    futures::StreamExt,
+    futures::StreamExt, Multiaddr,
 };
 use std::collections::HashSet;
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use crate::blockchain::{block::Block, chain::Blockchain};
 use crate::core::transaction::Transaction;
 use serde::{Serialize, Deserialize};
@@ -57,13 +57,17 @@ pub struct P2p {
 }
 
 impl P2p {
-    pub async fn new(message_sender: mpsc::UnboundedSender<P2pMessage>, message_receiver: mpsc::UnboundedReceiver<P2pMessage>) -> Self {
+    pub async fn new(
+        message_sender: mpsc::UnboundedSender<P2pMessage>,
+        message_receiver: mpsc::UnboundedReceiver<P2pMessage>,
+        p2p_port: u16,
+        initial_peers: Vec<Multiaddr>,
+    ) -> Self {
         let id_keys = identity::Keypair::generate_ed25519();
         let peer_id = PeerId::from(id_keys.public());
         info!("Peer ID: {}", peer_id);
 
         let topic = gossipsub::IdentTopic::new("sierpchain-blocks");
-        let topic_for_behaviour = topic.clone();
 
         let mut swarm = SwarmBuilder::with_existing_identity(id_keys.clone())
             .with_tokio()
@@ -73,48 +77,71 @@ impl P2p {
                 libp2p::yamux::Config::default,
             )
             .unwrap()
-            .with_behaviour(move |key| {
-                let mut gossipsub = gossipsub::Behaviour::new(
+            .with_behaviour(|key| {
+                let gossipsub = gossipsub::Behaviour::new(
                     gossipsub::MessageAuthenticity::Signed(key.clone()),
                     gossipsub::Config::default(),
                 )
                 .unwrap();
-                gossipsub.subscribe(&topic_for_behaviour).unwrap();
-
                 let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id).unwrap();
                 P2pBehaviour { gossipsub, mdns }
             })
             .unwrap()
             .build();
 
-        Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+        swarm.behaviour_mut().gossipsub.subscribe(&topic).unwrap();
 
-        Self { swarm, topic, message_receiver, message_sender, peers: HashSet::new() }
+        let listen_addr = format!("/ip4/0.0.0.0/tcp/{}", p2p_port);
+        let addr: Multiaddr = listen_addr.parse().expect("Failed to parse listen address");
+        swarm.listen_on(addr.clone()).unwrap();
+        info!("Listening on {}", addr);
+
+        for peer in initial_peers {
+            info!("Dialing peer at {}", peer);
+            if let Err(e) = swarm.dial(peer) {
+                warn!("Failed to dial peer: {}", e);
+            }
+        }
+
+        Self {
+            swarm,
+            topic,
+            message_receiver,
+            message_sender,
+            peers: HashSet::new(),
+        }
     }
 
     pub async fn run(mut self) {
         loop {
             tokio::select! {
                 Some(message) = self.message_receiver.recv() => {
-                    let json = serde_json::to_vec(&message).unwrap();
-                    if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(self.topic.clone(), json) {
-                        error!("Failed to publish message: {:?}", e);
+                    if let Ok(json) = serde_json::to_vec(&message) {
+                        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(self.topic.clone(), json) {
+                            error!("Failed to publish message: {:?}", e);
+                        }
                     }
                 }
                 event = self.swarm.select_next_some() => {
                     match event {
+                        libp2p::swarm::SwarmEvent::NewListenAddr { address, .. } => {
+                            info!("Listening on {:?}", address);
+                        }
                         libp2p::swarm::SwarmEvent::Behaviour(P2pEvent::Mdns(mdns::Event::Discovered(list))) => {
-                            for (peer, _) in list {
-                                self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer);
-                                self.peers.insert(peer);
+                            for (peer_id, _multiaddr) in list {
+                                info!("mDNS discovered a new peer: {peer_id}");
+                                self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                                self.peers.insert(peer_id);
                             }
-                            self.message_sender.send(P2pMessage::ChainRequest).unwrap();
+                            if !self.peers.is_empty() {
+                                self.message_sender.send(P2pMessage::ChainRequest).unwrap();
+                            }
                         }
                         libp2p::swarm::SwarmEvent::Behaviour(P2pEvent::Mdns(mdns::Event::Expired(list))) => {
-                            for (peer, _) in list {
-                                if !self.swarm.behaviour().mdns.has_node(&peer) {
-                                    self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer);
-                                    self.peers.remove(&peer);
+                            for (peer_id, _multiaddr) in list {
+                                if !self.swarm.behaviour().mdns.has_node(&peer_id) {
+                                    self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                                    self.peers.remove(&peer_id);
                                 }
                             }
                         }
@@ -123,11 +150,19 @@ impl P2p {
                             message_id: _id,
                             message,
                         })) => {
-                            let msg: Result<P2pMessage, serde_json::Error> = serde_json::from_slice(&message.data);
-                            if let Ok(msg) = msg {
+                            if let Ok(msg) = serde_json::from_slice::<P2pMessage>(&message.data) {
                                 info!("Received message from peer {:?}: {:#?}", peer_id, msg);
                                 self.message_sender.send(msg).unwrap();
                             }
+                        }
+                        libp2p::swarm::SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                            info!("Connected to {peer_id}");
+                            self.peers.insert(peer_id);
+                            self.message_sender.send(P2pMessage::ChainRequest).unwrap();
+                        }
+                        libp2p::swarm::SwarmEvent::ConnectionClosed { peer_id, .. } => {
+                            warn!("Disconnected from {peer_id}");
+                            self.peers.remove(&peer_id);
                         }
                         _ => {}
                     }

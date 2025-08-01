@@ -80,82 +80,69 @@ Traditional blockchains waste computational energy on arbitrary calculations. Si
 
 ## 🚀 Quick Start
 
+This guide will help you get a local SierpChain network up and running.
+
 ### 📋 Prerequisites
 
-<table>
-<tr>
-<th>Tool</th>
-<th>Version</th>
-<th>Purpose</th>
-<th>Installation</th>
-</tr>
-<tr>
-<td><strong>Rust</strong></td>
-<td>1.70+</td>
-<td>Backend development</td>
-<td><a href="https://rustup.rs/">rustup.rs</a></td>
-</tr>
-<tr>
-<td><strong>wasm-pack</strong></td>
-<td>Latest</td>
-<td>WebAssembly compilation</td>
-<td><code>cargo install wasm-pack</code></td>
-</tr>
-<tr>
-<td><strong>basic-http-server</strong></td>
-<td>Latest</td>
-<td>Frontend serving</td>
-<td><code>cargo install basic-http-server</code></td>
-</tr>
-</table>
+- **Rust**: Version 1.70 or later. Install from [rustup.rs](https://rustup.rs/).
 
-### ⚡ Lightning Setup
+### ⚡ Automated Multi-Node Setup
 
-```bash
-# 1. Clone and enter directory
-git clone https://github.com/zalgorythm/sierpchain.git
-cd sierpchain
-
-# 2. One-command setup
-make install  # Builds backend + frontend + installs dependencies
-
-# 3. Launch SierpChain
-make run      # Starts backend server + frontend server
-
-# 4. Open in browser
-open http://127.0.0.1:4000
-```
-
-### 🔧 Manual Setup
-
-<details>
-<summary>Click to expand manual installation steps</summary>
+The easiest way to start a local test network is with the `QuickStart.sh` script. It handles building the code, launching a bootstrap node, and connecting several peer nodes.
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/zalgorythm/sierpchain.git
 cd sierpchain
 
-# 2. Build backend
-cargo build --release
+# 2. Make the script executable
+chmod +x QuickStart.sh
 
-# 3. Build WebAssembly frontend
-cd frontend
-wasm-pack build --target web --out-dir pkg
-cd ..
-
-# 4. Start backend server
-cargo run --release &
-
-# 5. Serve frontend
-cd frontend
-basic-http-server . &
-
-# 6. Access application
-echo "🎉 SierpChain running at http://127.0.0.1:4000"
+# 3. Start the network
+./QuickStart.sh start
 ```
 
-</details>
+Your network is now running!
+- A bootstrap node is running with its API on `http://127.0.0.1:8080`.
+- Three peer nodes are running on ports `8081`, `8082`, and `8083`.
+- Logs for each node are stored in the `logs/` directory.
+
+To see the logs in real-time:
+```bash
+./QuickStart.sh logs
+```
+
+To stop the entire network:
+```bash
+./QuickStart.sh stop
+```
+
+### 🔧 Manual Launch
+
+You can also run a single node manually. After building the project with `cargo build --release`, use the following command:
+
+```bash
+./target/release/sierpchain [OPTIONS]
+```
+
+**Available Options:**
+
+| Flag | Argument | Description | Default |
+|---|---|---|---|
+| `-h`, `--http-port` | `<PORT>` | Sets the HTTP API port for the node. | `8080` |
+| `-p`, `--p2p-port` | `<PORT>` | Sets the TCP port for libp2p P2P communication. | `0` (random) |
+| `--peer` | `<MULTIADDR>` | Specifies a peer to connect to on startup. Can be used multiple times. | (none) |
+
+**Example: Starting a bootstrap node**
+```bash
+./target/release/sierpchain --http-port 8080 --p2p-port 10000
+```
+
+**Example: Starting a peer and connecting to the bootstrap node**
+*(Replace `<BOOTSTRAP_PEER_ID>` with the actual Peer ID from the bootstrap node's logs)*
+```bash
+./target/release/sierpchain --http-port 8081 --p2p-port 10001 --peer /ip4/127.0.0.1/tcp/10000/p2p/<BOOTSTRAP_PEER_ID>
+```
 
 ### 🐳 Docker Setup
 
