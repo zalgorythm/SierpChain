@@ -1,18 +1,17 @@
 use libp2p::{
-    core::upgrade,
     gossipsub,
     identity,
     mdns,
     noise,
-    swarm::{NetworkBehaviour, SwarmBuilder},
+    swarm::NetworkBehaviour,
     tcp,
-    PeerId, Swarm, Transport,
+    PeerId, Swarm, SwarmBuilder,
     futures::StreamExt,
 };
 use std::collections::HashSet;
 use tokio::sync::mpsc;
 use tracing::{error, info};
-use crate::blockchain::block::{Block, Blockchain};
+use crate::blockchain::{block::Block, chain::Blockchain};
 use crate::core::transaction::Transaction;
 use serde::{Serialize, Deserialize};
 
@@ -25,7 +24,7 @@ pub enum P2pMessage {
 }
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "P2pEvent")]
+#[behaviour(to_swarm = "P2pEvent")]
 pub struct P2pBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub mdns: mdns::tokio::Behaviour,
@@ -63,24 +62,30 @@ impl P2p {
         let peer_id = PeerId::from(id_keys.public());
         info!("Peer ID: {}", peer_id);
 
-        let transport = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
-            .upgrade(upgrade::Version::V1)
-            .authenticate(noise::Config::new(&id_keys).unwrap())
-            .multiplex(libp2p::yamux::Config::default())
-            .boxed();
-
         let topic = gossipsub::IdentTopic::new("sierpchain-blocks");
-        let mut gossipsub = gossipsub::Behaviour::new(
-            gossipsub::MessageAuthenticity::Signed(id_keys.clone()),
-            gossipsub::Config::default(),
-        )
-        .unwrap();
-        gossipsub.subscribe(&topic).unwrap();
+        let topic_for_behaviour = topic.clone();
 
-        let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id.clone()).unwrap();
-        let behaviour = P2pBehaviour { gossipsub, mdns };
+        let mut swarm = SwarmBuilder::with_existing_identity(id_keys.clone())
+            .with_tokio()
+            .with_tcp(
+                tcp::Config::default().nodelay(true),
+                noise::Config::new,
+                libp2p::yamux::Config::default,
+            )
+            .unwrap()
+            .with_behaviour(move |key| {
+                let mut gossipsub = gossipsub::Behaviour::new(
+                    gossipsub::MessageAuthenticity::Signed(key.clone()),
+                    gossipsub::Config::default(),
+                )
+                .unwrap();
+                gossipsub.subscribe(&topic_for_behaviour).unwrap();
 
-        let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, peer_id).build();
+                let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id).unwrap();
+                P2pBehaviour { gossipsub, mdns }
+            })
+            .unwrap()
+            .build();
 
         Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
 
@@ -115,7 +120,7 @@ impl P2p {
                         }
                         libp2p::swarm::SwarmEvent::Behaviour(P2pEvent::Gossipsub(gossipsub::Event::Message {
                             propagation_source: peer_id,
-                            message_id: id,
+                            message_id: _id,
                             message,
                         })) => {
                             let msg: Result<P2pMessage, serde_json::Error> = serde_json::from_slice(&message.data);
