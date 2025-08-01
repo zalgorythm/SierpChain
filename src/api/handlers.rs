@@ -1,13 +1,55 @@
 use actix_web::{get, post, web, Responder, HttpResponse};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
-use crate::blockchain::block::Blockchain;
+use crate::blockchain::chain::Blockchain;
 use crate::core::transaction::{Transaction, TxInput, TxOutput};
 use crate::core::wallet::Wallet;
 use crate::network::p2p::P2pMessage;
+use ed25519_dalek::SigningKey;
+use hex;
 
 pub type TransactionPool = Arc<Mutex<Vec<Transaction>>>;
+
+#[post("/mine")]
+pub async fn mine(
+    blockchain: web::Data<Arc<Mutex<Blockchain>>>,
+    transaction_pool: web::Data<TransactionPool>,
+    to_p2p: web::Data<mpsc::UnboundedSender<P2pMessage>>,
+    miner_wallet: web::Data<Arc<Wallet>>,
+) -> impl Responder {
+    let mut blockchain = blockchain.lock().unwrap();
+    let mut transactions = transaction_pool.lock().unwrap();
+
+    let coinbase_tx = Transaction::new(
+        vec![TxInput {
+            txid: "0".repeat(64),
+            vout: blockchain.chain.len() as usize,
+            script_sig: String::from("coinbase"),
+            pub_key: String::new(),
+            sequence: 0,
+        }],
+        vec![TxOutput {
+            value: 50, // Reward
+            script_pub_key: miner_wallet.get_address(),
+        }],
+    );
+
+    let mut block_transactions = vec![coinbase_tx];
+    block_transactions.extend(transactions.drain(..));
+
+    let fractal_depth = 5; // For now, let's use a fixed depth. This could be a parameter in the request.
+
+    let mined_block = blockchain.add_block(fractal_depth, block_transactions);
+
+    if let Err(e) = blockchain.save_to_file() {
+        tracing::error!("Failed to save blockchain: {}", e);
+    }
+
+    to_p2p.send(P2pMessage::Block(mined_block.clone())).unwrap();
+
+    HttpResponse::Ok().json(mined_block)
+}
 
 #[get("/blocks")]
 pub async fn get_blocks(data: web::Data<Arc<Mutex<Blockchain>>>) -> impl Responder {
@@ -55,6 +97,7 @@ pub async fn get_wallet_info(
 pub struct TransactRequest {
     to: String,
     amount: u64,
+    private_key: String,
 }
 
 #[post("/transact")]
@@ -63,10 +106,23 @@ pub async fn transact(
     blockchain: web::Data<Arc<Mutex<Blockchain>>>,
     tx_pool: web::Data<TransactionPool>,
     p2p_sender: web::Data<mpsc::UnboundedSender<P2pMessage>>,
-    miner_wallet: web::Data<Arc<Wallet>>,
 ) -> impl Responder {
+    let private_key_bytes = match hex::decode(&req.private_key) {
+        Ok(bytes) => bytes,
+        Err(_) => return HttpResponse::BadRequest().body("Invalid private key format"),
+    };
+
+    let private_key_array: [u8; 32] = match private_key_bytes.try_into() {
+        Ok(arr) => arr,
+        Err(_) => return HttpResponse::BadRequest().body("Invalid private key length"),
+    };
+
+    let signing_key = SigningKey::from_bytes(&private_key_array);
+
+    let sender_wallet = Wallet { signing_key };
+    let sender_address = sender_wallet.get_address();
+
     let blockchain = blockchain.lock().unwrap();
-    let sender_address = miner_wallet.get_address();
     let utxos = blockchain.get_utxos(&sender_address);
 
     let mut inputs = vec![];
@@ -102,7 +158,7 @@ pub async fn transact(
     }
 
     let mut new_tx = Transaction::new(inputs, outputs);
-    new_tx.sign(&miner_wallet);
+    new_tx.sign(&sender_wallet);
 
     if !new_tx.verify() {
         return HttpResponse::InternalServerError().body("Failed to verify new transaction");
@@ -114,4 +170,22 @@ pub async fn transact(
     pool.push(new_tx.clone());
 
     HttpResponse::Ok().json(new_tx)
+}
+
+#[derive(Serialize)]
+struct WalletInfoResponse {
+    private_key: String,
+    public_key: String,
+    address: String,
+}
+
+#[post("/wallet")]
+pub async fn create_wallet() -> impl Responder {
+    let wallet = Wallet::new();
+    let response = WalletInfoResponse {
+        private_key: hex::encode(wallet.signing_key.to_bytes()),
+        public_key: hex::encode(wallet.get_public_key().as_bytes()),
+        address: wallet.get_address(),
+    };
+    HttpResponse::Ok().json(response)
 }

@@ -3,13 +3,13 @@ mod api;
 mod blockchain;
 mod core;
 mod network;
+mod mining;
 
 use crate::api::handlers::{
-    get_blocks, get_balance, get_utxos, transact, get_wallet_info, TransactionPool,
+    get_blocks, get_balance, get_utxos, transact, get_wallet_info, mine, create_wallet, TransactionPool,
 };
 use crate::api::websocket::{BroadcastBlock, BroadcastHub, WsConn};
-use crate::blockchain::block::{Block, Blockchain};
-use crate::core::transaction::{Transaction, TxInput, TxOutput};
+use crate::blockchain::chain::Blockchain;
 use crate::core::wallet::Wallet;
 use crate::network::p2p::{P2p, P2pMessage};
 
@@ -20,7 +20,6 @@ use actix_web_actors::ws;
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
-use tokio::time::{self, Duration};
 use tracing_subscriber::fmt;
 
 // Initialize the tracing subscriber.
@@ -67,56 +66,6 @@ async fn main() -> std::io::Result<()> {
     // Start the P2P network layer.
     let p2p = P2p::new(p2p_message_sender, to_p2p_receiver).await;
     tokio::spawn(p2p.run());
-
-    // Spawn a new thread for mining blocks.
-    let blockchain_for_mining = Arc::clone(&blockchain);
-    let transaction_pool_for_mining = Arc::clone(&transaction_pool);
-    let to_p2p_sender_for_mining = to_p2p_sender.clone();
-    let miner_wallet_for_mining = Arc::clone(&miner_wallet);
-    let hub_for_mining = hub.clone();
-    tokio::spawn(async move {
-        loop {
-            time::sleep(Duration::from_secs(10)).await;
-
-            let new_block: Block;
-            {
-                let mut transactions = transaction_pool_for_mining.lock().unwrap();
-                let mut blockchain_lock = blockchain_for_mining.lock().unwrap();
-
-                let coinbase_tx = Transaction::new(
-                    vec![TxInput {
-                        txid: "0".repeat(64),
-                        vout: blockchain_lock.chain.len() as usize,
-                        script_sig: String::from("coinbase"),
-                        pub_key: String::new(),
-                        sequence: 0,
-                    }],
-                    vec![TxOutput {
-                        value: 50,
-                        script_pub_key: miner_wallet_for_mining.get_address(),
-                    }],
-                );
-
-                let mut block_transactions = vec![coinbase_tx];
-                block_transactions.extend(transactions.drain(..));
-
-                println!("\nMining block {}...", blockchain_lock.chain.len());
-                blockchain_lock.add_block(5, block_transactions);
-                new_block = blockchain_lock.chain.last().unwrap().clone();
-                to_p2p_sender_for_mining
-                    .send(P2pMessage::Block(new_block.clone()))
-                    .unwrap();
-
-                // Broadcast the new block to WebSocket clients
-                hub_for_mining.do_send(BroadcastBlock { block: new_block.clone() });
-
-                if let Err(e) = blockchain_lock.save_to_file() {
-                    tracing::error!("Failed to save blockchain: {}", e);
-                }
-            }
-            println!("Block {} mined: {:#?}", new_block.index, new_block);
-        }
-    });
 
     // Spawn a thread to handle incoming P2P messages.
     let blockchain_for_networking = Arc::clone(&blockchain);
@@ -182,9 +131,114 @@ async fn main() -> std::io::Result<()> {
             .service(get_utxos)
             .service(transact)
             .service(get_wallet_info)
+            .service(mine)
+            .service(create_wallet)
             .route("/ws", web::get().to(ws_route))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{test, App, dev::{Service, ServiceResponse}};
+    use actix_http::Request;
+    use serde_json;
+    use hex;
+
+    async fn setup_test_app() -> (impl Service<Request, Response = ServiceResponse, Error = actix_web::Error>, String) {
+        std::fs::remove_file("blockchain.json").ok();
+        let blockchain = Arc::new(Mutex::new(Blockchain::new(1)));
+        let transaction_pool: TransactionPool = Arc::new(Mutex::new(vec![]));
+        let miner_wallet = Arc::new(Wallet::new());
+        let private_key = hex::encode(miner_wallet.signing_key.to_bytes());
+        let (p2p_sender, mut p2p_receiver) = mpsc::unbounded_channel::<P2pMessage>();
+        tokio::spawn(async move {
+            while let Some(_) = p2p_receiver.recv().await {}
+        });
+        let hub = BroadcastHub::new().start();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(Arc::clone(&blockchain)))
+                .app_data(web::Data::new(Arc::clone(&transaction_pool)))
+                .app_data(web::Data::new(p2p_sender.clone()))
+                .app_data(web::Data::new(Arc::clone(&miner_wallet)))
+                .app_data(web::Data::new(hub.clone()))
+                .service(api::handlers::create_wallet)
+                .service(api::handlers::get_blocks)
+                .service(api::handlers::mine)
+                .service(api::handlers::transact)
+                .service(api::handlers::get_wallet_info)
+                .service(api::handlers::get_balance)
+                .service(api::handlers::get_utxos)
+                .route("/ws", web::get().to(ws_route))
+        ).await;
+        (app, private_key)
+    }
+
+    #[actix_web::test]
+    async fn test_create_wallet_endpoint() {
+        let (app, _) = setup_test_app().await;
+        let req = test::TestRequest::post().uri("/wallet").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        assert!(body["private_key"].is_string());
+        assert!(body["public_key"].is_string());
+        assert!(body["address"].is_string());
+    }
+
+    #[actix_web::test]
+    async fn test_mine_endpoint() {
+        let (app, _) = setup_test_app().await;
+        let req = test::TestRequest::post().uri("/mine").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        assert_eq!(body["index"], 1);
+        assert!(body["transactions"].as_array().unwrap().len() >= 1); // Coinbase tx
+    }
+
+    #[actix_web::test]
+    async fn test_transact_endpoint() {
+        let (app, miner_private_key) = setup_test_app().await;
+
+        // 1. Create a receiver wallet
+        let req = test::TestRequest::post().uri("/wallet").to_request();
+        let resp = test::call_service(&app, req).await;
+        let receiver_wallet: serde_json::Value = test::read_body_json(resp).await;
+        let receiver_address = receiver_wallet["address"].as_str().unwrap().to_string();
+
+        // 2. Mine a block to give the miner_wallet some funds.
+        let req = test::TestRequest::post().uri("/mine").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        // 3. Create a transaction from the miner to the receiver
+        let transact_req = serde_json::json!({
+            "to": receiver_address,
+            "amount": 10,
+            "private_key": miner_private_key
+        });
+        let req = test::TestRequest::post().uri("/transact").set_json(&transact_req).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        // 4. Mine another block to include the transaction
+        let req = test::TestRequest::post().uri("/mine").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        // 5. Check the receiver's balance
+        let req = test::TestRequest::get().uri(&format!("/address/{}/balance", receiver_wallet["address"].as_str().unwrap())).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+        let balance: u64 = test::read_body_json(resp).await;
+        assert_eq!(balance, 10);
+    }
 }
