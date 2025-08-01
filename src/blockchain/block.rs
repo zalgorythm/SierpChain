@@ -1,8 +1,8 @@
 use chrono::Utc;
 use sha2::{Sha256, Digest};
 use serde::{Serialize, Deserialize};
-use crate::fractal::FractalTriangle;
-use crate::transaction::{Transaction, TxInput, TxOutput};
+use crate::core::fractal::FractalTriangle;
+use crate::core::transaction::{Transaction, TxInput, TxOutput};
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
@@ -150,11 +150,14 @@ impl Blockchain {
         self.adjust_difficulty();
     }
 
-    pub fn add_block_from_network(&mut self, block: Block) {
+    pub fn add_block_from_network(&mut self, block: Block) -> bool {
         let previous_block = self.chain.last().unwrap();
         if self.is_block_valid(&block, previous_block) {
             self.chain.push(block);
             self.adjust_difficulty();
+            true
+        } else {
+            false
         }
     }
 
@@ -228,7 +231,7 @@ impl Blockchain {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wallet::Wallet;
+    use crate::core::wallet::Wallet;
 
     #[test]
     fn test_get_balance_and_utxos() {

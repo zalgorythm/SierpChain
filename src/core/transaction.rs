@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use chrono::Utc;
-use crate::wallet::Wallet;
+use crate::core::wallet::Wallet;
 use ed25519_dalek::{Signature, VerifyingKey, Verifier};
 
 /// An input to a transaction.
@@ -130,7 +130,7 @@ impl Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wallet::Wallet;
+    use crate::core::wallet::Wallet;
 
     #[test]
     fn test_sign_and_verify_transaction() {
