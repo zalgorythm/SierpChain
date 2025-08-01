@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use log;
 use web_sys;
 use yew::events::SubmitEvent;
+use gloo_net::websocket::{WebSocket, Message as WsMessage};
+use futures::stream::StreamExt;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct TransactRequest {
@@ -26,15 +28,45 @@ pub struct FractalTriangle {
 }
 
 /// Represents a block in the SierpChain.
-#[derive(Clone, PartialEq, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Deserialize, Debug, Default)]
 pub struct Block {
     pub index: u64,
     pub timestamp: i64,
     pub fractal: FractalTriangle,
-    pub data: String,
+    pub transactions: Vec<Transaction>,
     pub previous_hash: String,
     pub hash: String,
     pub nonce: u64,
+}
+
+/// Represents a transaction.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Transaction {
+    pub id: String,
+    pub timestamp: i64,
+    pub inputs: Vec<TxInput>,
+    pub outputs: Vec<TxOutput>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct TxInput {
+    pub txid: String,
+    pub vout: usize,
+    pub script_sig: String,
+    pub pub_key: String,
+    pub sequence: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct TxOutput {
+    pub value: u64,
+    pub script_pub_key: String,
+}
+
+impl Default for FractalTriangle {
+    fn default() -> Self {
+        Self { depth: 0, vertices: vec![] }
+    }
 }
 
 /// Properties for the `FractalTriangleComponent`.
@@ -51,13 +83,15 @@ fn fractal_triangle_component(props: &FractalTriangleProps) -> Html {
     }).collect::<Vec<String>>();
 
     html! {
-        <svg viewBox="-0.1 -0.1 1.2 1.2" width="100" height="100">
-            <g>
-                { for points_list.iter().map(|points| html!{
-                    <polygon points={points.clone()} fill="black" />
-                })}
-            </g>
-        </svg>
+        <div class="fractal-container">
+            <svg viewBox="-0.1 -0.1 1.2 1.2">
+                <g>
+                    { for points_list.iter().map(|points| html!{
+                        <polygon points={points.clone()} />
+                    })}
+                </g>
+            </svg>
+        </div>
     }
 }
 
@@ -67,24 +101,17 @@ fn wallet_component() -> Html {
     let to_address = use_state(String::new);
     let amount = use_state(|| 0);
 
-    // Fetch wallet info
     {
         let wallet_info = wallet_info.clone();
         use_effect_with((), move |_| {
             let wallet_info = wallet_info.clone();
             spawn_local(async move {
-                match Request::get("http://127.0.0.1:8080/wallet/info").send().await {
-                    Ok(response) => {
-                        if response.ok() {
-                            match response.json::<WalletInfo>().await {
-                                Ok(info) => wallet_info.set(Some(info)),
-                                Err(e) => log::error!("Failed to deserialize wallet info: {:?}", e),
-                            }
-                        } else {
-                            log::error!("Failed to fetch wallet info: status {}", response.status());
+                if let Ok(response) = Request::get("http://127.0.0.1:8080/wallet/info").send().await {
+                    if response.ok() {
+                        if let Ok(info) = response.json::<WalletInfo>().await {
+                            wallet_info.set(Some(info));
                         }
                     }
-                    Err(e) => log::error!("Failed to send request: {:?}", e),
                 }
             });
             || ()
@@ -100,21 +127,12 @@ fn wallet_component() -> Html {
             let amnt = *amount;
             spawn_local(async move {
                 let req = TransactRequest { to, amount: amnt };
-                match Request::post("http://127.0.0.1:8080/transact")
-                    .json(&req)
-                    .unwrap()
-                    .send()
-                    .await
-                {
-                    Ok(response) => {
-                        if response.ok() {
-                            log::info!("Transaction successful");
-                            // Optionally refresh wallet info or block list
-                        } else {
-                            log::error!("Transaction failed: status {}", response.status());
-                        }
+                if let Ok(response) = Request::post("http://127.0.0.1:8080/transact").json(&req).unwrap().send().await {
+                    if response.ok() {
+                        log::info!("Transaction successful");
+                    } else {
+                        log::error!("Transaction failed");
                     }
-                    Err(e) => log::error!("Failed to send transaction request: {:?}", e),
                 }
             });
         })
@@ -136,96 +154,108 @@ fn wallet_component() -> Html {
         })
     };
 
-
     if let Some(info) = &*wallet_info {
         html! {
-            <div class="wallet-card" style="border: 1px solid black; padding: 10px; margin: 10px;">
+            <div class="wallet-card">
                 <h2>{ "My Wallet" }</h2>
-                <p>{ format!("Address: {}...", info.address.chars().take(30).collect::<String>()) }</p>
-                <p>{ format!("Balance: {}", info.balance) }</p>
+                <p><strong>{ "Address: " }</strong>{ &info.address }</p>
+                <p><strong>{ "Balance: " }</strong>{ info.balance }</p>
                 <form onsubmit={on_submit}>
                     <h3>{ "Send Funds" }</h3>
                     <div>
                         <label for="to_address">{ "To Address:" }</label>
-                        <input type="text" id="to_address" value={(*to_address).clone()} onchange={on_to_address_change} style="width: 90%"/>
+                        <input type="text" id="to_address" value={(*to_address).clone()} onchange={on_to_address_change} />
                     </div>
                     <div>
                         <label for="amount">{ "Amount:" }</label>
-                        <input type="number" id="amount" value={amount.to_string()} onchange={on_amount_change}/>
+                        <input type="number" id="amount" value={amount.to_string()} onchange={on_amount_change} />
                     </div>
                     <button type="submit">{ "Send" }</button>
                 </form>
             </div>
         }
     } else {
-        html! { <p>{ "Loading wallet..." }</p> }
+        html! { <div class="wallet-card"><p>{ "Loading wallet..." }</p></div> }
     }
 }
 
 /// The main application component.
 #[function_component(App)]
 fn app() -> Html {
-    // State handle for the list of blocks.
     let blocks = use_state(|| vec![]);
+    let _ws_task = use_state(|| None);
 
     {
         let blocks = blocks.clone();
-        // Fetch the blocks from the backend when the component is first rendered.
         use_effect_with((), move |_| {
-            let blocks_clone = blocks.clone();
+            let blocks = blocks.clone();
             spawn_local(async move {
-                match Request::get("http://127.0.0.1:8080/blocks").send().await {
-                    Ok(response) => {
-                        if response.ok() {
-                            match response.json::<Vec<Block>>().await {
-                                Ok(fetched_blocks) => {
-                                    blocks_clone.set(fetched_blocks);
-                                }
-                                Err(e) => log::error!("Failed to deserialize blocks: {:?}", e),
-                            }
-                        } else {
-                            log::error!("Failed to fetch blocks: status {}", response.status());
+                if let Ok(response) = Request::get("http://127.0.0.1:8080/blocks").send().await {
+                    if response.ok() {
+                        if let Ok(fetched_blocks) = response.json::<Vec<Block>>().await {
+                            blocks.set(fetched_blocks);
                         }
                     }
-                    Err(e) => log::error!("Failed to send request: {:?}", e),
                 }
             });
             || ()
         });
     }
 
-    if blocks.is_empty() {
-        html! {
-            <div>
-                <h1>{ "SierpChain" }</h1>
-                <WalletComponent />
-                <p>{ "Loading blocks..." }</p>
-            </div>
-        }
-    } else {
-        html! {
-            <div>
-                <h1>{ "SierpChain" }</h1>
-                <WalletComponent />
-                <div class="blocks-container">
-                    { for blocks.iter().map(|block| html! {
-                        <div class="block-card" style="border: 1px solid black; padding: 10px; margin: 10px;">
-                            <h2>{ format!("Block #{}", block.index) }</h2>
-                            <p>{ format!("Hash: {}...", block.hash.chars().take(20).collect::<String>()) }</p>
-                            <p>{ format!("Previous Hash: {}...", block.previous_hash.chars().take(20).collect::<String>()) }</p>
-                            <p>{ format!("Nonce: {}", block.nonce) }</p>
-                            <p>{ format!("Data: {}", block.data) }</p>
-                            <p>{ format!("Fractal Depth: {}", block.fractal.depth) }</p>
-                            <FractalTriangleComponent triangle={block.fractal.clone()} />
+    {
+        let blocks = blocks.clone();
+        let ws_task_handle = _ws_task.clone();
+        use_effect_with((), move |_| {
+            let ws_conn = WebSocket::open("ws://127.0.0.1:8080/ws").unwrap();
+            let (mut _write, mut read) = ws_conn.split();
+
+            let ws_task = spawn_local(async move {
+                while let Some(Ok(WsMessage::Text(data))) = read.next().await {
+                    if let Ok(new_block) = serde_json::from_str::<Block>(&data) {
+                        let mut updated_blocks = (*blocks).clone();
+                        updated_blocks.push(new_block);
+                        blocks.set(updated_blocks);
+                    }
+                }
+            });
+            ws_task_handle.set(Some(ws_task));
+            || ()
+        });
+    }
+
+    html! {
+        <div>
+            <h1>{ "SierpChain 🔺⛓️" }</h1>
+            <div class="app-container">
+                <div class="sidebar">
+                    <WalletComponent />
+                </div>
+                <div class="main-content">
+                    if blocks.is_empty() {
+                        <p>{ "Loading blocks..." }</p>
+                    } else {
+                        <div class="blocks-container">
+                            { for blocks.iter().rev().map(|block| html! {
+                                <div class="block-card">
+                                    <FractalTriangleComponent triangle={block.fractal.clone()} />
+                                    <div class="block-details">
+                                        <h2>{ format!("Block #{}", block.index) }</h2>
+                                        <p><strong>{ "Hash: " }</strong>{ &block.hash }</p>
+                                        <p><strong>{ "Prev. Hash: " }</strong>{ &block.previous_hash }</p>
+                                        <p><strong>{ "Nonce: " }</strong>{ block.nonce }</p>
+                                        <p><strong>{ "Transactions: " }</strong>{ block.transactions.len() }</p>
+                                        <p><strong>{ "Fractal Depth: " }</strong>{ block.fractal.depth }</p>
+                                    </div>
+                                </div>
+                            })}
                         </div>
-                    })}
+                    }
                 </div>
             </div>
-        }
+        </div>
     }
 }
 
-/// The main entry point for the frontend application.
 fn main() {
     wasm_logger::init(wasm_logger::Config::default());
     yew::Renderer::<App>::new().render();
