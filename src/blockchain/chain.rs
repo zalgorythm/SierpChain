@@ -5,7 +5,7 @@ use std::fs;
 use std::io::Write;
 
 use super::block::Block;
-use crate::core::fractal::FractalTriangle;
+use crate::fractal::FractalType;
 use crate::core::transaction::{Transaction, TxInput, TxOutput};
 use crate::mining::miner::Miner;
 
@@ -85,32 +85,34 @@ impl Blockchain {
             }],
         );
 
+        let genesis_fractal = FractalType::Sierpinski { depth: 0, seed: 0 }.generate();
         let genesis_block = Block {
             index: 0,
             timestamp: Utc::now().timestamp(),
-            fractal: FractalTriangle { depth: 0, seed: 0, vertices: vec![] }, // Placeholder
+            fractal: genesis_fractal,
             transactions: vec![coinbase_tx],
             previous_hash: "0".to_string(),
             hash: String::new(),
             nonce: 0,
         };
-        let mined_genesis = Miner::mine_block(self.difficulty, 0, genesis_block);
+        let genesis_fractal_type = FractalType::Sierpinski { depth: 0, seed: 0 };
+        let mined_genesis = Miner::mine_block(self.difficulty, genesis_fractal_type, genesis_block);
         self.chain.push(mined_genesis);
     }
 
     /// Adds a new block to the blockchain and returns it.
-    pub fn add_block(&mut self, fractal_depth: usize, transactions: Vec<Transaction>) -> Block {
+    pub fn add_block(&mut self, fractal_type: FractalType, transactions: Vec<Transaction>) -> Block {
         let previous_block = self.chain.last().unwrap().clone();
         let new_block = Block {
             index: previous_block.index + 1,
             timestamp: Utc::now().timestamp(),
-            fractal: FractalTriangle { depth: fractal_depth, seed: 0, vertices: vec![] }, // Placeholder
+            fractal: fractal_type.generate(), // Placeholder, miner will generate
             transactions,
             previous_hash: previous_block.hash.clone(),
             hash: String::new(),
             nonce: 0,
         };
-        let mined_block = Miner::mine_block(self.difficulty, fractal_depth, new_block);
+        let mined_block = Miner::mine_block(self.difficulty, fractal_type, new_block);
         self.chain.push(mined_block.clone());
         self.adjust_difficulty();
         mined_block
@@ -236,8 +238,9 @@ mod tests {
             }],
         );
 
-        let _ = blockchain.add_block(1, vec![tx1]);
-        let _ = blockchain.add_block(1, vec![tx2]);
+        let fractal_type = FractalType::Sierpinski { depth: 1, seed: 0 };
+        let _ = blockchain.add_block(fractal_type.clone(), vec![tx1]);
+        let _ = blockchain.add_block(fractal_type, vec![tx2]);
 
         // Wallet 1 should have 30 (one output of 20 was spent)
         assert_eq!(blockchain.get_balance(&wallet1.get_address()), 30);

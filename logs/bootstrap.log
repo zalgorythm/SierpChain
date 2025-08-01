@@ -1,0 +1,54 @@
+Loaded blockchain from blockchain.json
+Genesis block mined: Block {
+    index: 0,
+    timestamp: 1754067757,
+    fractal: Sierpinski(
+        Sierpinski {
+            depth: 0,
+            seed: 2,
+            vertices: [
+                (
+                    0.0,
+                    0.0,
+                ),
+                (
+                    1.0,
+                    0.0,
+                ),
+                (
+                    0.5,
+                    0.866,
+                ),
+            ],
+        },
+    ),
+    transactions: [
+        Transaction {
+            id: "b91b8492f0b0a9be65f55896ebf57f02848c651483d8a755375920e3eabcf6d1",
+            timestamp: 1754067757,
+            inputs: [
+                TxInput {
+                    txid: "0000000000000000000000000000000000000000000000000000000000000000",
+                    vout: 18446744073709551615,
+                    script_sig: "genesis",
+                    pub_key: "",
+                    sequence: 0,
+                },
+            ],
+            outputs: [
+                TxOutput {
+                    value: 50,
+                    script_pub_key: "genesis_address",
+                },
+            ],
+        },
+    ],
+    previous_hash: "0",
+    hash: "087c3a320c8b3f9251fe7c583ed431438baa3adfb566dad547790fe520eeddc0",
+    nonce: 2,
+}
+Miner address: 129CweH3UWZd9XHnYH2R3EwxGuirxGRgt6MFdUJQHE1NjNbnuK9
+[2m2025-08-01T17:47:03.279854Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Peer ID: 12D3KooWKo8FxLbFZgmSSo1WxH48XHBrQFt3CM87mevkP8uFoSwK
+[2m2025-08-01T17:47:03.297218Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Listening on /ip4/0.0.0.0/tcp/10000
+Starting web server at http://127.0.0.1:8080
+Error: Os { code: 98, kind: AddrInUse, message: "Address already in use" }

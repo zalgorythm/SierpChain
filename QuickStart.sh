@@ -51,14 +51,11 @@ start_nodes() {
     stop_nodes
     mkdir -p "$LOG_DIR"
 
-    # 2. Build the project
-    echo "🏗️ Building SierpChain (release mode)..."
-    cargo build --release
+    # 2. Build the project (assuming it's already built)
     if [ ! -f "$BINARY_PATH" ]; then
-        echo "❌ Build failed. Exiting."
+        echo "❌ Binary not found. Please run 'cargo build --release' first."
         exit 1
     fi
-    echo "✅ Build complete."
 
     # 3. Start Bootstrap Node
     echo "🌐 Starting bootstrap node..."

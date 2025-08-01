@@ -6,10 +6,51 @@ use crate::blockchain::chain::Blockchain;
 use crate::core::transaction::{Transaction, TxInput, TxOutput};
 use crate::core::wallet::Wallet;
 use crate::network::p2p::P2pMessage;
+use crate::fractal::FractalType;
 use ed25519_dalek::SigningKey;
 use hex;
 
 pub type TransactionPool = Arc<Mutex<Vec<Transaction>>>;
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type", content = "params")]
+pub enum MineRequestParams {
+    Sierpinski {
+        depth: usize,
+    },
+    Mandelbrot {
+        width: usize,
+        height: usize,
+        x_min: f64,
+        x_max: f64,
+        y_min: f64,
+        y_max: f64,
+        max_iterations: u32,
+    },
+}
+
+impl MineRequestParams {
+    // This function will be used to convert the request params to the internal FractalType
+    // The seed will be set to 0, as it will be determined by the miner.
+    pub fn to_fractal_type(&self) -> FractalType {
+        match self {
+            MineRequestParams::Sierpinski { depth } => FractalType::Sierpinski { depth: *depth, seed: 0 },
+            MineRequestParams::Mandelbrot { width, height, x_min, x_max, y_min, y_max, max_iterations } => {
+                FractalType::Mandelbrot {
+                    width: *width,
+                    height: *height,
+                    x_min: *x_min,
+                    x_max: *x_max,
+                    y_min: *y_min,
+                    y_max: *y_max,
+                    max_iterations: *max_iterations,
+                    seed: 0,
+                }
+            }
+        }
+    }
+}
+
 
 #[post("/mine")]
 pub async fn mine(
@@ -17,6 +58,7 @@ pub async fn mine(
     transaction_pool: web::Data<TransactionPool>,
     to_p2p: web::Data<mpsc::UnboundedSender<P2pMessage>>,
     miner_wallet: web::Data<Arc<Wallet>>,
+    params: Option<web::Json<MineRequestParams>>,
 ) -> impl Responder {
     let mut blockchain = blockchain.lock().unwrap();
     let mut transactions = transaction_pool.lock().unwrap();
@@ -38,9 +80,12 @@ pub async fn mine(
     let mut block_transactions = vec![coinbase_tx];
     block_transactions.extend(transactions.drain(..));
 
-    let fractal_depth = 5; // For now, let's use a fixed depth. This could be a parameter in the request.
+    let fractal_type = params.map_or_else(
+        || FractalType::Sierpinski { depth: 5, seed: 0 }, // Default
+        |p| p.into_inner().to_fractal_type(),
+    );
 
-    let mined_block = blockchain.add_block(fractal_depth, block_transactions);
+    let mined_block = blockchain.add_block(fractal_type, block_transactions);
 
     if let Err(e) = blockchain.save_to_file() {
         tracing::error!("Failed to save blockchain: {}", e);

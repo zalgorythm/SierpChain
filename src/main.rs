@@ -2,6 +2,7 @@
 mod api;
 mod blockchain;
 mod core;
+mod fractal;
 mod network;
 mod mining;
 
@@ -54,7 +55,7 @@ async fn ws_route(
 }
 
 /// The main entry point for the SierpChain backend.
-#[tokio::main]
+#[actix_web::main]
 async fn main() -> std::io::Result<()> {
     Lazy::force(&TRACING_SUBSCRIBER);
     let cli = Cli::parse();
@@ -217,6 +218,32 @@ mod tests {
         let body: serde_json::Value = test::read_body_json(resp).await;
         assert_eq!(body["index"], 1);
         assert!(body["transactions"].as_array().unwrap().len() >= 1); // Coinbase tx
+        assert_eq!(body["fractal"]["type"], "Sierpinski");
+    }
+
+    #[actix_web::test]
+    async fn test_mine_mandelbrot_endpoint() {
+        let (app, _) = setup_test_app().await;
+        let mine_req = serde_json::json!({
+            "type": "Mandelbrot",
+            "params": {
+                "width": 10,
+                "height": 10,
+                "x_min": -2.0,
+                "x_max": 1.0,
+                "y_min": -1.5,
+                "y_max": 1.5,
+                "max_iterations": 100
+            }
+        });
+        let req = test::TestRequest::post().uri("/mine").set_json(&mine_req).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        assert_eq!(body["index"], 1);
+        assert_eq!(body["fractal"]["type"], "Mandelbrot");
+        assert_eq!(body["fractal"]["data"]["width"], 10);
     }
 
     #[actix_web::test]
