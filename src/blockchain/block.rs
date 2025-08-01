@@ -1,6 +1,6 @@
 use sha2::{Sha256, Digest};
 use serde::{Serialize, Deserialize};
-use crate::core::fractal::FractalTriangle;
+use crate::fractal::FractalData;
 use crate::core::transaction::{Transaction};
 
 /// Represents a block in the SierpChain.
@@ -8,7 +8,7 @@ use crate::core::transaction::{Transaction};
 pub struct Block {
     pub index: u64,
     pub timestamp: i64,
-    pub fractal: FractalTriangle,
+    pub fractal: FractalData,
     pub transactions: Vec<Transaction>,
     pub previous_hash: String,
     pub hash: String,

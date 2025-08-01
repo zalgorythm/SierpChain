@@ -1,5 +1,5 @@
 use crate::blockchain::block::Block;
-use crate::core::fractal::FractalTriangle;
+use crate::fractal::FractalType;
 
 pub struct Miner;
 
@@ -8,11 +8,18 @@ impl Miner {
     ///
     /// The algorithm requires finding a nonce that, when used as a seed for the fractal,
     /// produces a block hash that starts with a certain number of zeros.
-    pub fn mine_block(difficulty: usize, fractal_depth: usize, mut block: Block) -> Block {
+    pub fn mine_block(difficulty: usize, fractal_type: FractalType, mut block: Block) -> Block {
         let prefix = "0".repeat(difficulty);
 
         loop {
-            block.fractal = FractalTriangle::generate(fractal_depth, block.nonce);
+            let mut current_fractal_type = fractal_type.clone();
+            match &mut current_fractal_type {
+                FractalType::Sierpinski { seed, .. } => *seed = block.nonce,
+                FractalType::Mandelbrot { seed, .. } => *seed = block.nonce,
+            }
+
+            block.fractal = current_fractal_type.generate();
+
             let hash = block.calculate_hash();
             if hash.starts_with(&prefix) {
                 block.hash = hash;

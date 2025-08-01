@@ -1,8 +1,9 @@
 use serde::{Serialize, Deserialize};
+use super::utils::Lcg;
 
 /// Represents a Sierpinski triangle fractal.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct FractalTriangle {
+pub struct Sierpinski {
     /// The depth of the fractal.
     pub depth: usize,
     /// The seed used to generate the fractal.
@@ -11,14 +12,14 @@ pub struct FractalTriangle {
     pub vertices: Vec<(f64, f64)>,
 }
 
-impl FractalTriangle {
-    /// Generates a new `FractalTriangle` of a given depth and seed.
+impl Sierpinski {
+    /// Generates a new `Sierpinski` fractal of a given depth and seed.
     pub fn generate(depth: usize, seed: u64) -> Self {
         let mut vertices = Vec::new();
         let initial_triangle = [(0.0, 0.0), (1.0, 0.0), (0.5, 0.866)];
         let mut rng = Lcg::new(seed);
         Self::subdivide(&mut vertices, depth, initial_triangle[0], initial_triangle[1], initial_triangle[2], &mut rng);
-        FractalTriangle { depth, seed, vertices }
+        Sierpinski { depth, seed, vertices }
     }
 
     /// Recursively subdivides a triangle to generate the fractal.
@@ -49,27 +50,5 @@ impl FractalTriangle {
             Self::subdivide(vertices, depth - 1, m12, p2, m23, rng);
             Self::subdivide(vertices, depth - 1, m13, m23, p3, rng);
         }
-    }
-}
-
-/// A simple Linear Congruential Generator for pseudo-random numbers.
-struct Lcg {
-    state: u64,
-}
-
-impl Lcg {
-    fn new(seed: u64) -> Self {
-        Lcg { state: seed }
-    }
-
-    fn next(&mut self) -> u64 {
-        // Parameters from POSIX standard for rand()
-        self.state = self.state.wrapping_mul(1103515245).wrapping_add(12345);
-        self.state
-    }
-
-    /// Returns a float between -1.0 and 1.0
-    fn next_float(&mut self) -> f64 {
-        (self.next() % 2001) as f64 / 1000.0 - 1.0
     }
 }

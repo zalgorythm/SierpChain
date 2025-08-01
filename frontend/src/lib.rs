@@ -5,8 +5,11 @@ use serde::{Deserialize, Serialize};
 use log;
 use web_sys;
 use yew::events::SubmitEvent;
-use gloo_net::websocket::{WebSocket, Message as WsMessage};
+use gloo_net::websocket::{Message as WsMessage};
+use gloo_net::websocket::futures::WebSocket;
 use futures::stream::StreamExt;
+use web_sys::wasm_bindgen::{JsCast, Clamped};
+use serde_json;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct TransactRequest {
@@ -20,19 +23,39 @@ pub struct WalletInfo {
     pub balance: u64,
 }
 
-/// Represents a Sierpinski triangle fractal.
 #[derive(Clone, PartialEq, Deserialize, Debug)]
-pub struct FractalTriangle {
+pub struct Sierpinski {
     pub depth: usize,
+    pub seed: u64,
     pub vertices: Vec<(f64, f64)>,
 }
 
+#[derive(Clone, PartialEq, Deserialize, Debug)]
+pub struct Mandelbrot {
+    pub width: usize,
+    pub height: usize,
+    pub x_min: f64,
+    pub x_max: f64,
+    pub y_min: f64,
+    pub y_max: f64,
+    pub max_iterations: u32,
+    pub seed: u64,
+    pub data: Vec<u32>,
+}
+
+#[derive(Clone, PartialEq, Deserialize, Debug)]
+#[serde(tag = "type", content = "data")]
+pub enum FractalData {
+    Sierpinski(Sierpinski),
+    Mandelbrot(Mandelbrot),
+}
+
 /// Represents a block in the SierpChain.
-#[derive(Clone, PartialEq, Deserialize, Debug, Default)]
+#[derive(Clone, PartialEq, Deserialize, Debug)]
 pub struct Block {
     pub index: u64,
     pub timestamp: i64,
-    pub fractal: FractalTriangle,
+    pub fractal: FractalData,
     pub transactions: Vec<Transaction>,
     pub previous_hash: String,
     pub hash: String,
@@ -63,22 +86,16 @@ pub struct TxOutput {
     pub script_pub_key: String,
 }
 
-impl Default for FractalTriangle {
-    fn default() -> Self {
-        Self { depth: 0, vertices: vec![] }
-    }
-}
-
-/// Properties for the `FractalTriangleComponent`.
+/// Properties for the `SierpinskiComponent`.
 #[derive(Properties, PartialEq)]
-pub struct FractalTriangleProps {
-    pub triangle: FractalTriangle,
+pub struct SierpinskiProps {
+    pub sierpinski: Sierpinski,
 }
 
-/// A Yew component for rendering a `FractalTriangle` as an SVG.
-#[function_component(FractalTriangleComponent)]
-fn fractal_triangle_component(props: &FractalTriangleProps) -> Html {
-    let points_list = props.triangle.vertices.chunks(3).map(|chunk| {
+/// A Yew component for rendering a `Sierpinski` as an SVG.
+#[function_component(SierpinskiComponent)]
+fn sierpinski_component(props: &SierpinskiProps) -> Html {
+    let points_list = props.sierpinski.vertices.chunks(3).map(|chunk| {
         format!("{},{} {},{} {},{}", chunk[0].0, chunk[0].1, chunk[1].0, chunk[1].1, chunk[2].0, chunk[2].1)
     }).collect::<Vec<String>>();
 
@@ -95,6 +112,226 @@ fn fractal_triangle_component(props: &FractalTriangleProps) -> Html {
     }
 }
 
+// HSL to RGB conversion function
+fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+    let (r_prime, g_prime, b_prime) = if h >= 0.0 && h < 60.0 {
+        (c, x, 0.0)
+    } else if h >= 60.0 && h < 120.0 {
+        (x, c, 0.0)
+    } else if h >= 120.0 && h < 180.0 {
+        (0.0, c, x)
+    } else if h >= 180.0 && h < 240.0 {
+        (0.0, x, c)
+    } else if h >= 240.0 && h < 300.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+    (((r_prime + m) * 255.0) as u8,
+    ((g_prime + m) * 255.0) as u8,
+    ((b_prime + m) * 255.0) as u8)
+}
+
+#[derive(Properties, PartialEq)]
+pub struct MandelbrotProps {
+    pub mandelbrot: Mandelbrot,
+}
+
+#[function_component(MandelbrotComponent)]
+fn mandelbrot_component(props: &MandelbrotProps) -> Html {
+    let node_ref = use_node_ref();
+
+    {
+        let mandelbrot = props.mandelbrot.clone();
+        let node_ref = node_ref.clone();
+        use_effect_with((mandelbrot.clone(),), move |_| {
+            let canvas = node_ref.cast::<web_sys::HtmlCanvasElement>().unwrap();
+            let context = canvas
+                .get_context("2d")
+                .unwrap()
+                .unwrap()
+                .dyn_into::<web_sys::CanvasRenderingContext2d>()
+                .unwrap();
+
+            let width = mandelbrot.width;
+            let height = mandelbrot.height;
+            canvas.set_width(width as u32);
+            canvas.set_height(height as u32);
+            let mut image_data_vec = vec![0u8; (width * height * 4) as usize];
+            for i in 0..(width * height) {
+                let iteration = mandelbrot.data[i];
+                let color = if iteration == mandelbrot.max_iterations {
+                    (0, 0, 0, 255) // Black for points in the set
+                } else {
+                    let hue = (iteration as f64 * 10.0) % 360.0;
+                    let (r, g, b) = hsl_to_rgb(hue, 1.0, 0.5);
+                    (r, g, b, 255)
+                };
+                let offset = i * 4;
+                image_data_vec[offset] = color.0;
+                image_data_vec[offset + 1] = color.1;
+                image_data_vec[offset + 2] = color.2;
+                image_data_vec[offset + 3] = color.3;
+            }
+            let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(
+                Clamped(&mut image_data_vec),
+                width as u32,
+                height as u32,
+            ).unwrap();
+            context.put_image_data(&image_data, 0.0, 0.0).unwrap();
+
+            || ()
+        });
+    }
+
+    html! {
+        <div class="fractal-container">
+            <canvas ref={node_ref}></canvas>
+        </div>
+    }
+}
+
+/// Properties for the `FractalComponent`.
+#[derive(Properties, PartialEq)]
+pub struct FractalProps {
+    pub fractal: FractalData,
+}
+
+/// A Yew component for rendering a `FractalData` enum.
+#[function_component(FractalComponent)]
+fn fractal_component(props: &FractalProps) -> Html {
+    match &props.fractal {
+        FractalData::Sierpinski(s) => html! { <SierpinskiComponent sierpinski={s.clone()} /> },
+        FractalData::Mandelbrot(m) => html! { <MandelbrotComponent mandelbrot={m.clone()} /> },
+    }
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(tag = "type", content = "params")]
+pub enum MineRequestParams {
+    Sierpinski {
+        depth: usize,
+    },
+    Mandelbrot {
+        width: usize,
+        height: usize,
+        x_min: f64,
+        x_max: f64,
+        y_min: f64,
+        y_max: f64,
+        max_iterations: u32,
+    },
+}
+
+#[function_component(MiningComponent)]
+fn mining_component() -> Html {
+    let fractal_type = use_state(|| "Sierpinski".to_string());
+    let sierpinski_depth = use_state(|| 5);
+    let mandelbrot_width = use_state(|| 200);
+    let mandelbrot_height = use_state(|| 200);
+    let mandelbrot_max_iter = use_state(|| 100);
+
+    let on_fractal_type_change = {
+        let fractal_type = fractal_type.clone();
+        Callback::from(move |e: Event| {
+            let value = e.target_unchecked_into::<web_sys::HtmlSelectElement>().value();
+            fractal_type.set(value);
+        })
+    };
+
+    let on_mine_click = {
+        let fractal_type = fractal_type.clone();
+        let sierpinski_depth = sierpinski_depth.clone();
+        let mandelbrot_width = mandelbrot_width.clone();
+        let mandelbrot_height = mandelbrot_height.clone();
+        let mandelbrot_max_iter = mandelbrot_max_iter.clone();
+
+        Callback::from(move |_| {
+            let params = match (*fractal_type).as_str() {
+                "Sierpinski" => MineRequestParams::Sierpinski {
+                    depth: *sierpinski_depth,
+                },
+                "Mandelbrot" => MineRequestParams::Mandelbrot {
+                    width: *mandelbrot_width,
+                    height: *mandelbrot_height,
+                    x_min: -2.0, x_max: 1.0,
+                    y_min: -1.5, y_max: 1.5,
+                    max_iterations: *mandelbrot_max_iter,
+                },
+                _ => unreachable!(),
+            };
+            spawn_local(async move {
+                if let Ok(response) = Request::post("http://127.0.0.1:8081/mine")
+                    .json(&params)
+                    .unwrap()
+                    .send()
+                    .await
+                {
+                    if !response.ok() {
+                        log::error!("Failed to mine block");
+                    }
+                }
+            });
+        })
+    };
+
+    html! {
+        <div class="mining-card">
+            <h2>{ "Mine a New Block" }</h2>
+            <div>
+                <label for="fractal_type">{ "Fractal Type:" }</label>
+                <select id="fractal_type" onchange={on_fractal_type_change}>
+                    <option value="Sierpinski" selected={*fractal_type == "Sierpinski"}>{ "Sierpinski" }</option>
+                    <option value="Mandelbrot" selected={*fractal_type == "Mandelbrot"}>{ "Mandelbrot" }</option>
+                </select>
+            </div>
+            {
+                if *fractal_type == "Sierpinski" {
+                    html!{
+                        <div>
+                            <label for="sierpinski_depth">{ "Depth:" }</label>
+                            <input type="number" id="sierpinski_depth" value={sierpinski_depth.to_string()} onchange={Callback::from(move |e: Event| {
+                                let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
+                                sierpinski_depth.set(value.parse().unwrap_or(5));
+                            })} />
+                        </div>
+                    }
+                } else {
+                    html!{
+                        <>
+                            <div>
+                                <label for="mandelbrot_width">{ "Width:" }</label>
+                                <input type="number" id="mandelbrot_width" value={mandelbrot_width.to_string()} onchange={Callback::from(move |e: Event| {
+                                    let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
+                                    mandelbrot_width.set(value.parse().unwrap_or(200));
+                                })}/>
+                            </div>
+                            <div>
+                                <label for="mandelbrot_height">{ "Height:" }</label>
+                                <input type="number" id="mandelbrot_height" value={mandelbrot_height.to_string()} onchange={Callback::from(move |e: Event| {
+                                    let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
+                                    mandelbrot_height.set(value.parse().unwrap_or(200));
+                                })}/>
+                            </div>
+                            <div>
+                                <label for="mandelbrot_max_iter">{ "Max Iterations:" }</label>
+                                <input type="number" id="mandelbrot_max_iter" value={mandelbrot_max_iter.to_string()} onchange={Callback::from(move |e: Event| {
+                                    let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
+                                    mandelbrot_max_iter.set(value.parse().unwrap_or(100));
+                                })}/>
+                            </div>
+                        </>
+                    }
+                }
+            }
+            <button onclick={on_mine_click}>{ "Mine Block" }</button>
+        </div>
+    }
+}
+
 #[function_component(WalletComponent)]
 fn wallet_component() -> Html {
     let wallet_info = use_state(|| None);
@@ -106,7 +343,7 @@ fn wallet_component() -> Html {
         use_effect_with((), move |_| {
             let wallet_info = wallet_info.clone();
             spawn_local(async move {
-                if let Ok(response) = Request::get("http://127.0.0.1:8080/wallet/info").send().await {
+                if let Ok(response) = Request::get("http://127.0.0.1:8081/wallet/info").send().await {
                     if response.ok() {
                         if let Ok(info) = response.json::<WalletInfo>().await {
                             wallet_info.set(Some(info));
@@ -127,7 +364,7 @@ fn wallet_component() -> Html {
             let amnt = *amount;
             spawn_local(async move {
                 let req = TransactRequest { to, amount: amnt };
-                if let Ok(response) = Request::post("http://127.0.0.1:8080/transact").json(&req).unwrap().send().await {
+                if let Ok(response) = Request::post("http://127.0.0.1:8081/transact").json(&req).unwrap().send().await {
                     if response.ok() {
                         log::info!("Transaction successful");
                     } else {
@@ -190,7 +427,7 @@ fn app() -> Html {
         use_effect_with((), move |_| {
             let blocks = blocks.clone();
             spawn_local(async move {
-                if let Ok(response) = Request::get("http://127.0.0.1:8080/blocks").send().await {
+                if let Ok(response) = Request::get("http://127.0.0.1:8081/blocks").send().await {
                     if response.ok() {
                         if let Ok(fetched_blocks) = response.json::<Vec<Block>>().await {
                             blocks.set(fetched_blocks);
@@ -206,7 +443,7 @@ fn app() -> Html {
         let blocks = blocks.clone();
         let ws_task_handle = _ws_task.clone();
         use_effect_with((), move |_| {
-            let ws_conn = WebSocket::open("ws://127.0.0.1:8080/ws").unwrap();
+            let ws_conn = WebSocket::open("ws://127.0.0.1:8081/ws").unwrap();
             let (mut _write, mut read) = ws_conn.split();
 
             let ws_task = spawn_local(async move {
@@ -228,6 +465,7 @@ fn app() -> Html {
             <h1>{ "SierpChain 🔺⛓️" }</h1>
             <div class="app-container">
                 <div class="sidebar">
+                    <MiningComponent />
                     <WalletComponent />
                 </div>
                 <div class="main-content">
@@ -237,14 +475,19 @@ fn app() -> Html {
                         <div class="blocks-container">
                             { for blocks.iter().rev().map(|block| html! {
                                 <div class="block-card">
-                                    <FractalTriangleComponent triangle={block.fractal.clone()} />
+                                    <FractalComponent fractal={block.fractal.clone()} />
                                     <div class="block-details">
                                         <h2>{ format!("Block #{}", block.index) }</h2>
                                         <p><strong>{ "Hash: " }</strong>{ &block.hash }</p>
                                         <p><strong>{ "Prev. Hash: " }</strong>{ &block.previous_hash }</p>
                                         <p><strong>{ "Nonce: " }</strong>{ block.nonce }</p>
                                         <p><strong>{ "Transactions: " }</strong>{ block.transactions.len() }</p>
-                                        <p><strong>{ "Fractal Depth: " }</strong>{ block.fractal.depth }</p>
+                                        {
+                                            match &block.fractal {
+                                                FractalData::Sierpinski(s) => html!{<p><strong>{ "Fractal Type: " }</strong>{ "Sierpinski" }<br/><strong>{ "Depth: " }</strong>{ s.depth }</p>},
+                                                FractalData::Mandelbrot(m) => html!{<p><strong>{ "Fractal Type: " }</strong>{ "Mandelbrot" }<br/><strong>{ "Max Iterations: " }</strong>{ m.max_iterations }</p>},
+                                            }
+                                        }
                                     </div>
                                 </div>
                             })}
@@ -259,4 +502,14 @@ fn app() -> Html {
 fn main() {
     wasm_logger::init(wasm_logger::Config::default());
     yew::Renderer::<App>::new().render();
+}
+
+#[cfg(test)]
+mod tests {
+    use wasm_bindgen_test::*;
+
+    #[wasm_bindgen_test]
+    fn pass() {
+        assert_eq!(1, 1);
+    }
 }

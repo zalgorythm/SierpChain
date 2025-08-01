@@ -1,28 +1,31 @@
 Loaded blockchain from blockchain.json
 Genesis block mined: Block {
     index: 0,
-    timestamp: 1753920151,
-    fractal: FractalTriangle {
-        depth: 0,
-        vertices: [
-            (
-                0.0,
-                0.0,
-            ),
-            (
-                1.0,
-                0.0,
-            ),
-            (
-                0.5,
-                0.866,
-            ),
-        ],
-    },
+    timestamp: 1754067757,
+    fractal: Sierpinski(
+        Sierpinski {
+            depth: 0,
+            seed: 2,
+            vertices: [
+                (
+                    0.0,
+                    0.0,
+                ),
+                (
+                    1.0,
+                    0.0,
+                ),
+                (
+                    0.5,
+                    0.866,
+                ),
+            ],
+        },
+    ),
     transactions: [
         Transaction {
-            id: "f873a95322ef7efeaaab8394cce9d2a82ccd853f8abcb885f71abb5fb3fe882b",
-            timestamp: 1753920151,
+            id: "b91b8492f0b0a9be65f55896ebf57f02848c651483d8a755375920e3eabcf6d1",
+            timestamp: 1754067757,
             inputs: [
                 TxInput {
                     txid: "0000000000000000000000000000000000000000000000000000000000000000",
@@ -41,12 +44,18 @@ Genesis block mined: Block {
         },
     ],
     previous_hash: "0",
-    hash: "00006702ff8ee4efc8c17d6ac87eb6790e39342cde472697c0f8f09934241fed",
-    nonce: 22452,
+    hash: "087c3a320c8b3f9251fe7c583ed431438baa3adfb566dad547790fe520eeddc0",
+    nonce: 2,
 }
-Miner address: 12B4MYxRjwgypG19EvcCGDGfshvgts8SSYi7q77oJZUcJEEJM4L
-[2m2025-07-31T00:10:23.163108Z[0m [32m INFO[0m [2msierpchain::p2p[0m[2m:[0m Peer ID: 12D3KooWHLj8uk1DyA6Lc6nrkdYUeojKGUM2WS12gxJKFqP6KYkL
-[2m2025-07-31T00:10:23.164714Z[0m [32m INFO[0m [2mlibp2p_swarm[0m[2m:[0m Local peer id: 12D3KooWHLj8uk1DyA6Lc6nrkdYUeojKGUM2WS12gxJKFqP6KYkL
-[2m2025-07-31T00:10:23.166976Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour::iface[0m[2m:[0m creating instance on iface 192.168.0.2
-[2m2025-07-31T00:10:23.167444Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour::iface[0m[2m:[0m creating instance on iface 172.17.0.1
-Starting web server at http://127.0.0.1:8080
+Miner address: 18LdA5Zzqi5f6xuqC3Yxp6PcuHq3fBp6LXZ5boSqCkV56EjtTW
+[2m2025-08-01T17:47:46.704090Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Peer ID: 12D3KooWEvUGDXXNKkguuUkUN8mk6QB8s9rxRG1SrrtMyXeSthND
+[2m2025-08-01T17:47:46.706452Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Listening on /ip4/0.0.0.0/tcp/0
+Starting web server at http://127.0.0.1:8081
+[2m2025-08-01T17:47:46.706807Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 4 workers
+[2m2025-08-01T17:47:46.706827Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Actix runtime found; starting in Actix runtime
+[2m2025-08-01T17:47:46.706832Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-127.0.0.1:8081", workers: 4, listening on: 127.0.0.1:8081
+[2m2025-08-01T17:47:46.712507Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour::iface[0m[2m:[0m creating instance on iface 192.168.0.2
+[2m2025-08-01T17:47:46.713283Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour::iface[0m[2m:[0m creating instance on iface 172.17.0.1
+[2m2025-08-01T17:47:46.713515Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Listening on /ip4/127.0.0.1/tcp/38925
+[2m2025-08-01T17:47:46.713534Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Listening on /ip4/192.168.0.2/tcp/38925
+[2m2025-08-01T17:47:46.713543Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Listening on /ip4/172.17.0.1/tcp/38925
