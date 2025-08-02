@@ -230,9 +230,9 @@ pub enum MineRequestParams {
 fn mining_component() -> Html {
     let fractal_type = use_state(|| "Sierpinski".to_string());
     let sierpinski_depth = use_state(|| 5);
-    let mandelbrot_width = use_state(|| 200);
-    let mandelbrot_height = use_state(|| 200);
-    let mandelbrot_max_iter = use_state(|| 100);
+    let mandelbrot_width = use_state(|| 50);
+    let mandelbrot_height = use_state(|| 50);
+    let mandelbrot_max_iter = use_state(|| 30);
 
     let on_fractal_type_change = {
         let fractal_type = fractal_type.clone();
@@ -306,21 +306,21 @@ fn mining_component() -> Html {
                                 <label for="mandelbrot_width">{ "Width:" }</label>
                                 <input type="number" id="mandelbrot_width" value={mandelbrot_width.to_string()} onchange={Callback::from(move |e: Event| {
                                     let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
-                                    mandelbrot_width.set(value.parse().unwrap_or(200));
+                                    mandelbrot_width.set(value.parse().unwrap_or(50));
                                 })}/>
                             </div>
                             <div>
                                 <label for="mandelbrot_height">{ "Height:" }</label>
                                 <input type="number" id="mandelbrot_height" value={mandelbrot_height.to_string()} onchange={Callback::from(move |e: Event| {
                                     let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
-                                    mandelbrot_height.set(value.parse().unwrap_or(200));
+                                    mandelbrot_height.set(value.parse().unwrap_or(50));
                                 })}/>
                             </div>
                             <div>
                                 <label for="mandelbrot_max_iter">{ "Max Iterations:" }</label>
                                 <input type="number" id="mandelbrot_max_iter" value={mandelbrot_max_iter.to_string()} onchange={Callback::from(move |e: Event| {
                                     let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
-                                    mandelbrot_max_iter.set(value.parse().unwrap_or(100));
+                                    mandelbrot_max_iter.set(value.parse().unwrap_or(30));
                                 })}/>
                             </div>
                         </>

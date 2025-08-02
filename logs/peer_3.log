@@ -1,0 +1,100 @@
+Loaded blockchain from blockchain.json
+Genesis block mined: Block {
+    index: 0,
+    timestamp: 1754067757,
+    fractal: Sierpinski(
+        Sierpinski {
+            depth: 0,
+            seed: 2,
+            vertices: [
+                (
+                    0.0,
+                    0.0,
+                ),
+                (
+                    1.0,
+                    0.0,
+                ),
+                (
+                    0.5,
+                    0.866,
+                ),
+            ],
+        },
+    ),
+    transactions: [
+        Transaction {
+            id: "b91b8492f0b0a9be65f55896ebf57f02848c651483d8a755375920e3eabcf6d1",
+            timestamp: 1754067757,
+            inputs: [
+                TxInput {
+                    txid: "0000000000000000000000000000000000000000000000000000000000000000",
+                    vout: 18446744073709551615,
+                    script_sig: "genesis",
+                    pub_key: "",
+                    sequence: 0,
+                },
+            ],
+            outputs: [
+                TxOutput {
+                    value: 50,
+                    script_pub_key: "genesis_address",
+                },
+            ],
+        },
+    ],
+    previous_hash: "0",
+    hash: "087c3a320c8b3f9251fe7c583ed431438baa3adfb566dad547790fe520eeddc0",
+    nonce: 2,
+}
+Miner address: 1SdBM6h7fTTN4khdK1Ae7K32YkTaernDQb7KfvagBYmRwCGJ9T
+[2m2025-08-02T11:32:39.709692Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Peer ID: 12D3KooWCiTuNjCBjfpT8GFogGeeRcJr88x5SupgxSYfbpAMEswA
+[2m2025-08-02T11:32:39.711205Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Listening on /ip4/0.0.0.0/tcp/10003
+[2m2025-08-02T11:32:39.711227Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Dialing peer at /ip4/127.0.0.1/tcp/10000/p2p/12D3KooWCuNTgsobZrYHxb4KdDRqSQz3byqtv557Q7U7YZbhi8vn
+Starting web server at http://127.0.0.1:8083
+[2m2025-08-02T11:32:39.712403Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m starting 4 workers
+[2m2025-08-02T11:32:39.712426Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m Actix runtime found; starting in Actix runtime
+[2m2025-08-02T11:32:39.712434Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m starting service: "actix-web-service-127.0.0.1:8083", workers: 4, listening on: 127.0.0.1:8083
+[2m2025-08-02T11:32:39.752931Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour::iface[0m[2m:[0m creating instance on iface 192.168.0.2
+[2m2025-08-02T11:32:39.753123Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour::iface[0m[2m:[0m creating instance on iface 172.17.0.1
+[2m2025-08-02T11:32:39.753311Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Listening on /ip4/127.0.0.1/tcp/10003
+[2m2025-08-02T11:32:39.753401Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Listening on /ip4/192.168.0.2/tcp/10003
+[2m2025-08-02T11:32:39.753427Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Listening on /ip4/172.17.0.1/tcp/10003
+[2m2025-08-02T11:32:39.755459Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour[0m[2m:[0m discovered: 12D3KooWPzv8cnawbrtuDgMakGBYaQyS9HPFgZEXfNjE8ppF2WLB /ip4/192.168.0.2/tcp/10001
+[2m2025-08-02T11:32:39.755600Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour[0m[2m:[0m discovered: 12D3KooWPzv8cnawbrtuDgMakGBYaQyS9HPFgZEXfNjE8ppF2WLB /ip4/172.17.0.1/tcp/10001
+[2m2025-08-02T11:32:39.756046Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m mDNS discovered a new peer: 12D3KooWPzv8cnawbrtuDgMakGBYaQyS9HPFgZEXfNjE8ppF2WLB
+[2m2025-08-02T11:32:39.756073Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m mDNS discovered a new peer: 12D3KooWPzv8cnawbrtuDgMakGBYaQyS9HPFgZEXfNjE8ppF2WLB
+[2m2025-08-02T11:32:39.760403Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.760546Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour[0m[2m:[0m discovered: 12D3KooWCuNTgsobZrYHxb4KdDRqSQz3byqtv557Q7U7YZbhi8vn /ip4/172.17.0.1/tcp/10000
+[2m2025-08-02T11:32:39.760602Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour[0m[2m:[0m discovered: 12D3KooWCuNTgsobZrYHxb4KdDRqSQz3byqtv557Q7U7YZbhi8vn /ip4/192.168.0.2/tcp/10000
+[2m2025-08-02T11:32:39.760762Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour[0m[2m:[0m discovered: 12D3KooWEGjei6T4cebZpDKYrsMNNSdq1Hk7zQVsC1JG3NtTMoY8 /ip4/192.168.0.2/tcp/10002
+[2m2025-08-02T11:32:39.760952Z[0m [32m INFO[0m [2mlibp2p_mdns::behaviour[0m[2m:[0m discovered: 12D3KooWEGjei6T4cebZpDKYrsMNNSdq1Hk7zQVsC1JG3NtTMoY8 /ip4/172.17.0.1/tcp/10002
+[2m2025-08-02T11:32:39.761003Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m mDNS discovered a new peer: 12D3KooWCuNTgsobZrYHxb4KdDRqSQz3byqtv557Q7U7YZbhi8vn
+[2m2025-08-02T11:32:39.761016Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m mDNS discovered a new peer: 12D3KooWCuNTgsobZrYHxb4KdDRqSQz3byqtv557Q7U7YZbhi8vn
+[2m2025-08-02T11:32:39.761025Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m mDNS discovered a new peer: 12D3KooWEGjei6T4cebZpDKYrsMNNSdq1Hk7zQVsC1JG3NtTMoY8
+[2m2025-08-02T11:32:39.761041Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m mDNS discovered a new peer: 12D3KooWEGjei6T4cebZpDKYrsMNNSdq1Hk7zQVsC1JG3NtTMoY8
+[2m2025-08-02T11:32:39.766447Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWCuNTgsobZrYHxb4KdDRqSQz3byqtv557Q7U7YZbhi8vn
+[2m2025-08-02T11:32:39.767853Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.769148Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.859006Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWPzv8cnawbrtuDgMakGBYaQyS9HPFgZEXfNjE8ppF2WLB
+[2m2025-08-02T11:32:39.859050Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWPzv8cnawbrtuDgMakGBYaQyS9HPFgZEXfNjE8ppF2WLB
+[2m2025-08-02T11:32:39.860279Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.860868Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.866245Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWPzv8cnawbrtuDgMakGBYaQyS9HPFgZEXfNjE8ppF2WLB
+[2m2025-08-02T11:32:39.866291Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWPzv8cnawbrtuDgMakGBYaQyS9HPFgZEXfNjE8ppF2WLB
+[2m2025-08-02T11:32:39.866315Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWCuNTgsobZrYHxb4KdDRqSQz3byqtv557Q7U7YZbhi8vn
+[2m2025-08-02T11:32:39.866329Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWCuNTgsobZrYHxb4KdDRqSQz3byqtv557Q7U7YZbhi8vn
+[2m2025-08-02T11:32:39.866396Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWEGjei6T4cebZpDKYrsMNNSdq1Hk7zQVsC1JG3NtTMoY8
+[2m2025-08-02T11:32:39.868876Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.869267Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.869721Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.870191Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.870621Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.872413Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWEGjei6T4cebZpDKYrsMNNSdq1Hk7zQVsC1JG3NtTMoY8
+[2m2025-08-02T11:32:39.872447Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWCuNTgsobZrYHxb4KdDRqSQz3byqtv557Q7U7YZbhi8vn
+[2m2025-08-02T11:32:39.872468Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWCuNTgsobZrYHxb4KdDRqSQz3byqtv557Q7U7YZbhi8vn
+[2m2025-08-02T11:32:39.872572Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWEGjei6T4cebZpDKYrsMNNSdq1Hk7zQVsC1JG3NtTMoY8
+[2m2025-08-02T11:32:39.872602Z[0m [32m INFO[0m [2msierpchain::network::p2p[0m[2m:[0m Connected to 12D3KooWEGjei6T4cebZpDKYrsMNNSdq1Hk7zQVsC1JG3NtTMoY8
+[2m2025-08-02T11:32:39.875606Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.875945Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
+[2m2025-08-02T11:32:39.876282Z[0m [31mERROR[0m [2msierpchain::network::p2p[0m[2m:[0m Failed to publish message: InsufficientPeers
