@@ -44,10 +44,26 @@ pub struct Mandelbrot {
 }
 
 #[derive(Clone, PartialEq, Deserialize, Debug)]
+pub struct Julia {
+    pub width: usize,
+    pub height: usize,
+    pub x_min: f64,
+    pub x_max: f64,
+    pub y_min: f64,
+    pub y_max: f64,
+    pub c_real: f64,
+    pub c_imag: f64,
+    pub max_iterations: u32,
+    pub seed: u64,
+    pub data: Vec<u32>,
+}
+
+#[derive(Clone, PartialEq, Deserialize, Debug)]
 #[serde(tag = "type", content = "data")]
 pub enum FractalData {
     Sierpinski(Sierpinski),
     Mandelbrot(Mandelbrot),
+    Julia(Julia),
 }
 
 /// Represents a block in the SierpChain.
@@ -194,6 +210,66 @@ fn mandelbrot_component(props: &MandelbrotProps) -> Html {
     }
 }
 
+#[derive(Properties, PartialEq)]
+pub struct JuliaProps {
+    pub julia: Julia,
+}
+
+#[function_component(JuliaComponent)]
+fn julia_component(props: &JuliaProps) -> Html {
+    let node_ref = use_node_ref();
+
+    {
+        let julia = props.julia.clone();
+        let node_ref = node_ref.clone();
+        use_effect_with((julia.clone(),), move |_| {
+            let canvas = node_ref.cast::<web_sys::HtmlCanvasElement>().unwrap();
+            let context = canvas
+                .get_context("2d")
+                .unwrap()
+                .unwrap()
+                .dyn_into::<web_sys::CanvasRenderingContext2d>()
+                .unwrap();
+
+            let width = julia.width;
+            let height = julia.height;
+            canvas.set_width(width as u32);
+            canvas.set_height(height as u32);
+            let mut image_data_vec = vec![0u8; (width * height * 4) as usize];
+            for i in 0..(width * height) {
+                let iteration = julia.data[i];
+                let color = if iteration == julia.max_iterations {
+                    (0, 0, 0, 255) // Black for points in the set
+                } else {
+                    let hue = (iteration as f64 * 10.0) % 360.0;
+                    let (r, g, b) = hsl_to_rgb(hue, 1.0, 0.5);
+                    (r, g, b, 255)
+                };
+                let offset = i * 4;
+                image_data_vec[offset] = color.0;
+                image_data_vec[offset + 1] = color.1;
+                image_data_vec[offset + 2] = color.2;
+                image_data_vec[offset + 3] = color.3;
+            }
+            let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(
+                Clamped(&mut image_data_vec),
+                width as u32,
+                height as u32,
+            ).unwrap();
+            context.put_image_data(&image_data, 0.0, 0.0).unwrap();
+
+            || ()
+        });
+    }
+
+    html! {
+        <div class="fractal-container">
+            <canvas ref={node_ref}></canvas>
+        </div>
+    }
+}
+
+
 /// Properties for the `FractalComponent`.
 #[derive(Properties, PartialEq)]
 pub struct FractalProps {
@@ -206,6 +282,7 @@ fn fractal_component(props: &FractalProps) -> Html {
     match &props.fractal {
         FractalData::Sierpinski(s) => html! { <SierpinskiComponent sierpinski={s.clone()} /> },
         FractalData::Mandelbrot(m) => html! { <MandelbrotComponent mandelbrot={m.clone()} /> },
+        FractalData::Julia(j) => html! { <JuliaComponent julia={j.clone()} /> },
     }
 }
 
@@ -224,6 +301,17 @@ pub enum MineRequestParams {
         y_max: f64,
         max_iterations: u32,
     },
+    Julia {
+        width: usize,
+        height: usize,
+        x_min: f64,
+        x_max: f64,
+        y_min: f64,
+        y_max: f64,
+        c_real: f64,
+        c_imag: f64,
+        max_iterations: u32,
+    },
 }
 
 #[function_component(MiningComponent)]
@@ -233,6 +321,11 @@ fn mining_component() -> Html {
     let mandelbrot_width = use_state(|| 50);
     let mandelbrot_height = use_state(|| 50);
     let mandelbrot_max_iter = use_state(|| 30);
+    let julia_c_real = use_state(|| -0.8);
+    let julia_c_imag = use_state(|| 0.156);
+    let julia_width = use_state(|| 50);
+    let julia_height = use_state(|| 50);
+    let julia_max_iter = use_state(|| 100);
 
     let on_fractal_type_change = {
         let fractal_type = fractal_type.clone();
@@ -248,6 +341,11 @@ fn mining_component() -> Html {
         let mandelbrot_width = mandelbrot_width.clone();
         let mandelbrot_height = mandelbrot_height.clone();
         let mandelbrot_max_iter = mandelbrot_max_iter.clone();
+        let julia_c_real = julia_c_real.clone();
+        let julia_c_imag = julia_c_imag.clone();
+        let julia_width = julia_width.clone();
+        let julia_height = julia_height.clone();
+        let julia_max_iter = julia_max_iter.clone();
 
         Callback::from(move |_| {
             let params = match (*fractal_type).as_str() {
@@ -260,6 +358,15 @@ fn mining_component() -> Html {
                     x_min: -2.0, x_max: 1.0,
                     y_min: -1.5, y_max: 1.5,
                     max_iterations: *mandelbrot_max_iter,
+                },
+                "Julia" => MineRequestParams::Julia {
+                    width: *julia_width,
+                    height: *julia_height,
+                    x_min: -1.5, x_max: 1.5,
+                    y_min: -1.5, y_max: 1.5,
+                    c_real: *julia_c_real,
+                    c_imag: *julia_c_imag,
+                    max_iterations: *julia_max_iter,
                 },
                 _ => unreachable!(),
             };
@@ -286,11 +393,12 @@ fn mining_component() -> Html {
                 <select id="fractal_type" onchange={on_fractal_type_change}>
                     <option value="Sierpinski" selected={*fractal_type == "Sierpinski"}>{ "Sierpinski" }</option>
                     <option value="Mandelbrot" selected={*fractal_type == "Mandelbrot"}>{ "Mandelbrot" }</option>
+                    <option value="Julia" selected={*fractal_type == "Julia"}>{ "Julia" }</option>
                 </select>
             </div>
             {
-                if *fractal_type == "Sierpinski" {
-                    html!{
+                match (*fractal_type).as_str() {
+                    "Sierpinski" => html!{
                         <div>
                             <label for="sierpinski_depth">{ "Depth:" }</label>
                             <input type="number" id="sierpinski_depth" value={sierpinski_depth.to_string()} onchange={Callback::from(move |e: Event| {
@@ -298,9 +406,8 @@ fn mining_component() -> Html {
                                 sierpinski_depth.set(value.parse().unwrap_or(5));
                             })} />
                         </div>
-                    }
-                } else {
-                    html!{
+                    },
+                    "Mandelbrot" => html!{
                         <>
                             <div>
                                 <label for="mandelbrot_width">{ "Width:" }</label>
@@ -324,7 +431,47 @@ fn mining_component() -> Html {
                                 })}/>
                             </div>
                         </>
-                    }
+                    },
+                    "Julia" => html!{
+                        <>
+                            <div>
+                                <label for="julia_width">{ "Width:" }</label>
+                                <input type="number" id="julia_width" value={julia_width.to_string()} onchange={Callback::from(move |e: Event| {
+                                    let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
+                                    julia_width.set(value.parse().unwrap_or(50));
+                                })}/>
+                            </div>
+                            <div>
+                                <label for="julia_height">{ "Height:" }</label>
+                                <input type="number" id="julia_height" value={julia_height.to_string()} onchange={Callback::from(move |e: Event| {
+                                    let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
+                                    julia_height.set(value.parse().unwrap_or(50));
+                                })}/>
+                            </div>
+                            <div>
+                                <label for="julia_max_iter">{ "Max Iterations:" }</label>
+                                <input type="number" id="julia_max_iter" value={julia_max_iter.to_string()} onchange={Callback::from(move |e: Event| {
+                                    let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
+                                    julia_max_iter.set(value.parse().unwrap_or(100));
+                                })}/>
+                            </div>
+                            <div>
+                                <label for="julia_c_real">{ "C (Real):" }</label>
+                                <input type="number" step="0.01" id="julia_c_real" value={julia_c_real.to_string()} onchange={Callback::from(move |e: Event| {
+                                    let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
+                                    julia_c_real.set(value.parse().unwrap_or(-0.8));
+                                })}/>
+                            </div>
+                            <div>
+                                <label for="julia_c_imag">{ "C (Imaginary):" }</label>
+                                <input type="number" step="0.001" id="julia_c_imag" value={julia_c_imag.to_string()} onchange={Callback::from(move |e: Event| {
+                                    let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
+                                    julia_c_imag.set(value.parse().unwrap_or(0.156));
+                                })}/>
+                            </div>
+                        </>
+                    },
+                    _ => html! {}
                 }
             }
             <button onclick={on_mine_click}>{ "Mine Block" }</button>
@@ -486,6 +633,7 @@ fn app() -> Html {
                                             match &block.fractal {
                                                 FractalData::Sierpinski(s) => html!{<p><strong>{ "Fractal Type: " }</strong>{ "Sierpinski" }<br/><strong>{ "Depth: " }</strong>{ s.depth }</p>},
                                                 FractalData::Mandelbrot(m) => html!{<p><strong>{ "Fractal Type: " }</strong>{ "Mandelbrot" }<br/><strong>{ "Max Iterations: " }</strong>{ m.max_iterations }</p>},
+                                                FractalData::Julia(j) => html!{<p><strong>{ "Fractal Type: " }</strong>{ "Julia" }<br/><strong>{ "Max Iterations: " }</strong>{ j.max_iterations }<br/><strong>{ "C: " }</strong>{ format!("{:.3} + {:.3}i", j.c_real, j.c_imag) }</p>},
                                             }
                                         }
                                     </div>

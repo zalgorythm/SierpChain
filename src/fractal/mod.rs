@@ -1,10 +1,12 @@
 use serde::{Serialize, Deserialize};
 pub mod sierpinski;
 pub mod mandelbrot;
+pub mod julia;
 pub mod utils;
 
 use self::sierpinski::Sierpinski;
 use self::mandelbrot::Mandelbrot;
+use self::julia::Julia;
 
 /// An enum to hold the data for different fractal types.
 /// This will be stored in the block.
@@ -13,6 +15,7 @@ use self::mandelbrot::Mandelbrot;
 pub enum FractalData {
     Sierpinski(Sierpinski),
     Mandelbrot(Mandelbrot),
+    Julia(Julia),
 }
 
 /// An enum to represent the different types of fractals that can be generated.
@@ -27,6 +30,18 @@ pub enum FractalType {
         x_max: f64,
         y_min: f64,
         y_max: f64,
+        max_iterations: u32,
+        seed: u64,
+    },
+    Julia {
+        width: usize,
+        height: usize,
+        x_min: f64,
+        x_max: f64,
+        y_min: f64,
+        y_max: f64,
+        c_real: f64,
+        c_imag: f64,
         max_iterations: u32,
         seed: u64,
     },
@@ -54,6 +69,29 @@ impl FractalType {
                 *x_max,
                 *y_min,
                 *y_max,
+                *max_iterations,
+                *seed,
+            )),
+            FractalType::Julia {
+                width,
+                height,
+                x_min,
+                x_max,
+                y_min,
+                y_max,
+                c_real,
+                c_imag,
+                max_iterations,
+                seed,
+            } => FractalData::Julia(Julia::generate(
+                *width,
+                *height,
+                *x_min,
+                *x_max,
+                *y_min,
+                *y_max,
+                *c_real,
+                *c_imag,
                 *max_iterations,
                 *seed,
             )),

@@ -27,6 +27,17 @@ pub enum MineRequestParams {
         y_max: f64,
         max_iterations: u32,
     },
+    Julia {
+        width: usize,
+        height: usize,
+        x_min: f64,
+        x_max: f64,
+        y_min: f64,
+        y_max: f64,
+        c_real: f64,
+        c_imag: f64,
+        max_iterations: u32,
+    },
 }
 
 impl MineRequestParams {
@@ -43,6 +54,20 @@ impl MineRequestParams {
                     x_max: *x_max,
                     y_min: *y_min,
                     y_max: *y_max,
+                    max_iterations: *max_iterations,
+                    seed: 0,
+                }
+            }
+            MineRequestParams::Julia { width, height, x_min, x_max, y_min, y_max, c_real, c_imag, max_iterations } => {
+                FractalType::Julia {
+                    width: *width,
+                    height: *height,
+                    x_min: *x_min,
+                    x_max: *x_max,
+                    y_min: *y_min,
+                    y_max: *y_max,
+                    c_real: *c_real,
+                    c_imag: *c_imag,
                     max_iterations: *max_iterations,
                     seed: 0,
                 }
