@@ -228,7 +228,7 @@ sierpchain/
 
 ### 🏗️ Blockchain Endpoints
 
-#### **GET** `/api/v1/blocks`
+#### **GET** `/blocks`
 *Retrieve the complete blockchain with fractal metadata*
 
 **Response Example:**
@@ -271,7 +271,7 @@ sierpchain/
 }
 ```
 
-#### **POST** `/api/v1/mine`
+#### **POST** `/mine`
 *Initiate mining of a new block*
 
 **Request:**
@@ -282,45 +282,6 @@ sierpchain/
   "fractal_preferences": {
     "color_scheme": "sunset",
     "pattern_style": "organic"
-  }
-}
-```
-
-### 🎨 Fractal Endpoints
-
-#### **GET** `/api/v1/fractal/{depth}`
-*Generate Sierpinski triangle of specified depth*
-
-#### **GET** `/api/v1/visualize/{block_hash}`
-*Get interactive visualization data for a block*
-
-#### **POST** `/api/v1/fractal/custom`
-*Generate custom fractal patterns*
-
-### 📊 Analytics Endpoints
-
-#### **GET** `/api/v1/stats`
-*Comprehensive blockchain and mining statistics*
-
-**Response:**
-```json
-{
-  "blockchain": {
-    "total_blocks": 156,
-    "total_transactions": 1247,
-    "average_mining_time": 2341,
-    "current_difficulty": 6
-  },
-  "mining": {
-    "hashrate_estimate": "127.3 TH/s",
-    "active_miners": 23,
-    "difficulty_trend": "increasing"
-  },
-  "fractals": {
-    "total_generated": 4719,
-    "unique_patterns": 4701,
-    "complexity_range": [3, 12],
-    "most_beautiful_block": "000abc123..."
   }
 }
 ```

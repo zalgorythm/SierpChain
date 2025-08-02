@@ -26,15 +26,6 @@ BINARY_PATH="./target/release/sierpchain"
 # Functions
 # ------------------------------------------------------------------------------
 
-# Trap for cleaning up background processes on script exit
-cleanup() {
-    echo "🧹 Cleaning up background processes..."
-    pkill -P $$
-    rm -f bootstrap_node_info.txt
-}
-
-trap cleanup EXIT
-
 # Stop all SierpChain processes
 stop_nodes() {
     echo "🛑 Stopping all SierpChain nodes..."
@@ -75,7 +66,7 @@ start_nodes() {
             echo "❌ Bootstrap node failed to start. Check logs at $bootstrap_log"
             exit 1
         fi
-        peer_id=$(grep "Peer ID" "$bootstrap_log" | awk '{print $3}')
+        peer_id=$(grep "Peer ID" "$bootstrap_log" | awk '{print $NF}')
         sleep 1
     done
     local bootstrap_multiaddr="/ip4/127.0.0.1/tcp/${bootstrap_p2p_port}/p2p/${peer_id}"
