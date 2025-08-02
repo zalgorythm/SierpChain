@@ -68,7 +68,7 @@ async fn main() -> std::io::Result<()> {
     let (to_p2p_sender, to_p2p_receiver) = mpsc::unbounded_channel::<P2pMessage>();
 
     // Initialize shared state.
-    let blockchain = Arc::new(Mutex::new(Blockchain::new(4)));
+    let blockchain = Arc::new(Mutex::new(Blockchain::new(2)));
     let transaction_pool: TransactionPool = Arc::new(Mutex::new(vec![]));
     let miner_wallet = Arc::new(Wallet::new());
 
