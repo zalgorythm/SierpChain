@@ -12,3 +12,14 @@ target/
 
 # MSVC Windows builds produce these files
 *.pdb
+
+# Log files
+*.log
+logs/
+
+# Blockchain data
+blockchain.json
+bootstrap_node_info.txt
+
+# Frontend build artifacts
+frontend/dist/

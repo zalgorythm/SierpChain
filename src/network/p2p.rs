@@ -3,10 +3,12 @@ use libp2p::{
     identity,
     mdns,
     noise,
-    swarm::NetworkBehaviour,
+    swarm::{NetworkBehaviour, SwarmBuilder},
     tcp,
-    PeerId, Swarm, SwarmBuilder,
+    PeerId, Swarm,
     futures::StreamExt, Multiaddr,
+    kad::{store::MemoryStore, Event as KadEvent, Kademlia},
+    identify, Transport,
 };
 use std::collections::HashSet;
 use tokio::sync::mpsc;
@@ -14,6 +16,7 @@ use tracing::{error, info, warn};
 use crate::blockchain::{block::Block, chain::Blockchain};
 use crate::core::transaction::Transaction;
 use serde::{Serialize, Deserialize};
+use std::fmt;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum P2pMessage {
@@ -28,12 +31,26 @@ pub enum P2pMessage {
 pub struct P2pBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub mdns: mdns::tokio::Behaviour,
+    pub kademlia: Kademlia<MemoryStore>,
+    pub identify: identify::Behaviour,
 }
 
-#[derive(Debug)]
 pub enum P2pEvent {
     Gossipsub(gossipsub::Event),
     Mdns(mdns::Event),
+    Kademlia(KadEvent),
+    Identify(identify::Event),
+}
+
+impl fmt::Debug for P2pEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            P2pEvent::Gossipsub(event) => f.debug_tuple("P2pEvent::Gossipsub").field(event).finish(),
+            P2pEvent::Mdns(event) => f.debug_tuple("P2pEvent::Mdns").field(event).finish(),
+            P2pEvent::Kademlia(_) => f.debug_tuple("P2pEvent::Kademlia").finish(),
+            P2pEvent::Identify(event) => f.debug_tuple("P2pEvent::Identify").field(event).finish(),
+        }
+    }
 }
 
 impl From<gossipsub::Event> for P2pEvent {
@@ -45,6 +62,18 @@ impl From<gossipsub::Event> for P2pEvent {
 impl From<mdns::Event> for P2pEvent {
     fn from(event: mdns::Event) -> Self {
         P2pEvent::Mdns(event)
+    }
+}
+
+impl From<KadEvent> for P2pEvent {
+    fn from(event: KadEvent) -> Self {
+        P2pEvent::Kademlia(event)
+    }
+}
+
+impl From<identify::Event> for P2pEvent {
+    fn from(event: identify::Event) -> Self {
+        P2pEvent::Identify(event)
     }
 }
 
@@ -69,25 +98,35 @@ impl P2p {
 
         let topic = gossipsub::IdentTopic::new("sierpchain-blocks");
 
-        let mut swarm = SwarmBuilder::with_existing_identity(id_keys.clone())
-            .with_tokio()
-            .with_tcp(
-                tcp::Config::default().nodelay(true),
-                noise::Config::new,
-                libp2p::yamux::Config::default,
+        let behaviour = {
+            let gossipsub = gossipsub::Behaviour::new(
+                gossipsub::MessageAuthenticity::Signed(id_keys.clone()),
+                gossipsub::ConfigBuilder::default()
+                    .heartbeat_interval(std::time::Duration::from_secs(10))
+                    .max_transmit_size(2 * 1024 * 1024) // 2MB
+                    .build()
+                    .unwrap(),
             )
-            .unwrap()
-            .with_behaviour(|key| {
-                let gossipsub = gossipsub::Behaviour::new(
-                    gossipsub::MessageAuthenticity::Signed(key.clone()),
-                    gossipsub::Config::default(),
-                )
-                .unwrap();
-                let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id).unwrap();
-                P2pBehaviour { gossipsub, mdns }
-            })
-            .unwrap()
-            .build();
+            .unwrap();
+            let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id).unwrap();
+            let kademlia = Kademlia::new(peer_id, MemoryStore::new(peer_id));
+            let identify = identify::Behaviour::new(identify::Config::new(
+                "/sierpchain/1.0.0".to_string(),
+                id_keys.public(),
+            ));
+            P2pBehaviour { gossipsub, mdns, kademlia, identify }
+        };
+
+        let mut swarm = SwarmBuilder::with_tokio_executor(
+            libp2p::tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
+                .upgrade(libp2p::core::upgrade::Version::V1)
+                .authenticate(noise::Config::new(&id_keys).unwrap())
+                .multiplex(libp2p::yamux::Config::default())
+                .boxed(),
+            behaviour,
+            peer_id,
+        )
+        .build();
 
         swarm.behaviour_mut().gossipsub.subscribe(&topic).unwrap();
 
@@ -117,7 +156,9 @@ impl P2p {
             tokio::select! {
                 Some(message) = self.message_receiver.recv() => {
                     if let Ok(json) = serde_json::to_vec(&message) {
-                        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(self.topic.clone(), json) {
+                        if self.swarm.behaviour().gossipsub.all_peers().next().is_none() {
+                            error!("Failed to publish message: InsufficientPeers");
+                        } else if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(self.topic.clone(), json) {
                             error!("Failed to publish message: {:?}", e);
                         }
                     }
@@ -128,9 +169,10 @@ impl P2p {
                             info!("Listening on {:?}", address);
                         }
                         libp2p::swarm::SwarmEvent::Behaviour(P2pEvent::Mdns(mdns::Event::Discovered(list))) => {
-                            for (peer_id, _multiaddr) in list {
+                            for (peer_id, multiaddr) in list {
                                 info!("mDNS discovered a new peer: {peer_id}");
                                 self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                                self.swarm.behaviour_mut().kademlia.add_address(&peer_id, multiaddr);
                                 self.peers.insert(peer_id);
                             }
                             if !self.peers.is_empty() {
@@ -160,8 +202,8 @@ impl P2p {
                             self.peers.insert(peer_id);
                             self.message_sender.send(P2pMessage::ChainRequest).unwrap();
                         }
-                        libp2p::swarm::SwarmEvent::ConnectionClosed { peer_id, .. } => {
-                            warn!("Disconnected from {peer_id}");
+                        libp2p::swarm::SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+                            warn!("Disconnected from {peer_id}: {:?}", cause);
                             self.peers.remove(&peer_id);
                         }
                         _ => {}
@@ -171,3 +213,4 @@ impl P2p {
         }
     }
 }
+
