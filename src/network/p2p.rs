@@ -151,7 +151,7 @@ impl P2p {
                             message,
                         })) => {
                             if let Ok(msg) = serde_json::from_slice::<P2pMessage>(&message.data) {
-                                info!("Received message from peer {:?}: {:#?}", peer_id, msg);
+                                tracing::debug!("Received message from peer {:?}: {:#?}", peer_id, msg);
                                 self.message_sender.send(msg).unwrap();
                             }
                         }
