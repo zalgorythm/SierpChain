@@ -16,6 +16,7 @@ impl Miner {
             match &mut current_fractal_type {
                 FractalType::Sierpinski { seed, .. } => *seed = block.nonce,
                 FractalType::Mandelbrot { seed, .. } => *seed = block.nonce,
+                FractalType::Julia { seed, .. } => *seed = block.nonce,
             }
 
             block.fractal = current_fractal_type.generate();
