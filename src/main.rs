@@ -19,10 +19,13 @@ use actix_cors::Cors;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Error};
 use actix_web_actors::ws;
 use clap::Parser;
+use dotenv::dotenv;
 use libp2p::Multiaddr;
 use once_cell::sync::Lazy;
+use std::env;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
+use tokio::time::{self, Duration};
 use tracing_subscriber::fmt;
 
 // Initialize the tracing subscriber.
@@ -58,6 +61,7 @@ async fn ws_route(
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     Lazy::force(&TRACING_SUBSCRIBER);
+    dotenv().ok();
     let cli = Cli::parse();
 
     // Start the broadcast hub
@@ -87,42 +91,96 @@ async fn main() -> std::io::Result<()> {
     let transaction_pool_for_networking = Arc::clone(&transaction_pool);
     let to_p2p_sender_for_networking = to_p2p_sender.clone();
     let hub_for_networking = hub.clone();
+    let miner_wallet_for_networking = Arc::clone(&miner_wallet);
     tokio::spawn(async move {
-        while let Some(message) = p2p_message_receiver.recv().await {
-            match message {
-                P2pMessage::Block(block) => {
-                    let mut blockchain_lock = blockchain_for_networking.lock().unwrap();
-                    let added = blockchain_lock.add_block_from_network(block.clone());
-                    if added {
-                        hub_for_networking.do_send(BroadcastBlock { block });
-                    }
-                    if let Err(e) = blockchain_lock.save_to_file() {
-                        tracing::error!("Failed to save blockchain: {}", e);
+        let auto_mine = env::var("AUTO_MINE").unwrap_or_else(|_| "false".to_string()) == "true";
+        let interval_ms = env::var("MINING_INTERVAL_MS")
+            .unwrap_or_else(|_| "10000".to_string())
+            .parse::<u64>()
+            .unwrap_or(10000);
+        let mut mine_interval = if auto_mine {
+            let mut interval = time::interval(Duration::from_millis(interval_ms));
+            interval.tick().await; // First tick is immediate
+            Some(interval)
+        } else {
+            None
+        };
+
+        loop {
+            tokio::select! {
+                Some(message) = p2p_message_receiver.recv() => {
+                    match message {
+                        P2pMessage::Block(block) => {
+                            let mut blockchain_lock = blockchain_for_networking.lock().unwrap();
+                            let added = blockchain_lock.add_block_from_network(block.clone());
+                            if added {
+                                hub_for_networking.do_send(BroadcastBlock { block });
+                            }
+                            if let Err(e) = blockchain_lock.save_to_file() {
+                                tracing::error!("Failed to save blockchain: {}", e);
+                            }
+                        }
+                        P2pMessage::ChainRequest => {
+                            let blockchain_lock = blockchain_for_networking.lock().unwrap();
+                            let chain = blockchain_lock.clone();
+                            to_p2p_sender_for_networking
+                                .send(P2pMessage::ChainResponse(chain))
+                                .unwrap();
+                        }
+                        P2pMessage::ChainResponse(chain) => {
+                            let mut blockchain_lock = blockchain_for_networking.lock().unwrap();
+                            if chain.chain.len() > blockchain_lock.chain.len() {
+                                blockchain_lock.chain = chain.chain;
+                                if let Err(e) = blockchain_lock.save_to_file() {
+                                    tracing::error!("Failed to save blockchain: {}", e);
+                                }
+                            }
+                        }
+                        P2pMessage::Transaction(transaction) => {
+                            if transaction.verify() {
+                                let mut pool = transaction_pool_for_networking.lock().unwrap();
+                                if !pool.iter().any(|tx| tx.id == transaction.id) {
+                                    pool.push(transaction);
+                                }
+                            }
+                        }
                     }
                 }
-                P2pMessage::ChainRequest => {
-                    let blockchain_lock = blockchain_for_networking.lock().unwrap();
-                    let chain = blockchain_lock.clone();
-                    to_p2p_sender_for_networking
-                        .send(P2pMessage::ChainResponse(chain))
-                        .unwrap();
-                }
-                P2pMessage::ChainResponse(chain) => {
-                    let mut blockchain_lock = blockchain_for_networking.lock().unwrap();
-                    if chain.chain.len() > blockchain_lock.chain.len() {
-                        blockchain_lock.chain = chain.chain;
-                        if let Err(e) = blockchain_lock.save_to_file() {
+                _ = async {
+                    if let Some(ref mut interval) = mine_interval {
+                        interval.tick().await;
+                    } else {
+                        // This branch will never be selected if auto-mining is disabled
+                        std::future::pending::<()>().await;
+                    }
+                } => {
+                    let mined_block = {
+                        let mut blockchain = blockchain_for_networking.lock().unwrap();
+                        let mut transactions = transaction_pool_for_networking.lock().unwrap();
+                        let coinbase_tx = crate::core::transaction::Transaction::new(
+                            vec![crate::core::transaction::TxInput {
+                                txid: "0".repeat(64),
+                                vout: blockchain.chain.len() as usize,
+                                script_sig: String::from("coinbase"),
+                                pub_key: String::new(),
+                                sequence: 0,
+                            }],
+                            vec![crate::core::transaction::TxOutput {
+                                value: 50,
+                                script_pub_key: miner_wallet_for_networking.get_address(),
+                            }],
+                        );
+                        let mut block_transactions = vec![coinbase_tx];
+                        block_transactions.extend(transactions.drain(..));
+                        let fractal_type = crate::fractal::FractalType::Sierpinski { depth: 5, seed: 0 };
+                        let mined_block = blockchain.add_block(fractal_type, block_transactions);
+                        if let Err(e) = blockchain.save_to_file() {
                             tracing::error!("Failed to save blockchain: {}", e);
                         }
-                    }
-                }
-                P2pMessage::Transaction(transaction) => {
-                    if transaction.verify() {
-                        let mut pool = transaction_pool_for_networking.lock().unwrap();
-                        if !pool.iter().any(|tx| tx.id == transaction.id) {
-                            pool.push(transaction);
-                        }
-                    }
+                        mined_block
+                    };
+                    hub_for_networking.do_send(BroadcastBlock { block: mined_block.clone() });
+                    to_p2p_sender_for_networking.send(P2pMessage::Block(mined_block)).unwrap();
                 }
             }
         }
